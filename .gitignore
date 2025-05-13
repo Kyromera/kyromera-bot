@@ -28,6 +28,12 @@ out/
 .springBeans
 .sts4-cache
 bin/
+log/
+target/
+logs/
+config/
+config.json
+.env
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
