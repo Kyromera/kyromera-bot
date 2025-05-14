@@ -27,7 +27,6 @@
     <logger name="net.dv8tion.jda" level="info"/>
     <logger name="io.github.freya022.botcommands" level="debug"/>
     <logger name="com.zaxxer.hikari" level="info"/>
-    <logger name="org.flywaydb" level="debug"/>
 
     <root level="info">
         <appender-ref ref="STDOUT"/>
