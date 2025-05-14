@@ -5,101 +5,120 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.lettuce.core.RedisClient
 import io.lettuce.core.RedisURI
 import io.lettuce.core.api.StatefulRedisConnection
-import io.lettuce.core.api.reactive.RedisReactiveCommands
-import kotlinx.coroutines.reactive.awaitFirstOrNull
-import me.diamondforge.kyromera.bot.configuration.Config
+import io.lettuce.core.api.async.RedisAsyncCommands
+import io.lettuce.core.codec.StringCodec
+import io.lettuce.core.support.AsyncConnectionPoolSupport
+import io.lettuce.core.support.BoundedAsyncPool
+import io.lettuce.core.support.BoundedPoolConfig
+import kotlinx.coroutines.future.await
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import me.diamondforge.kyromera.bot.configuration.Config
 
-val logger = KotlinLogging.logger {}
+private val logger = KotlinLogging.logger {}
 
 @BService
 class RedisClientProvider(config: Config) {
-    private val redisConfig = config.redisConfig
-    private val uri = RedisURI.Builder.redis(redisConfig.host, redisConfig.port).apply {
-        if (redisConfig.password.isNotBlank()) {
-            withPassword(redisConfig.password.toCharArray())
-        }
-    }.build()
+    private val uri = config.redisConfig.let {
+        RedisURI.Builder.redis(it.host, it.port).apply {
+            if (it.password.isNotBlank()) {
+                withPassword(it.password.toCharArray())
+            }
+        }.build()
+    }
+    
+    private val client: RedisClient = RedisClient.create()
+    private val json = Json { ignoreUnknownKeys = true }
 
-    private val client: RedisClient = RedisClient.create(uri)
-    private var connection: StatefulRedisConnection<String, String> = client.connect()
-    var reactive: RedisReactiveCommands<String, String> = connection.reactive()
+
+    private val pool: BoundedAsyncPool<StatefulRedisConnection<String, String>> =
+        AsyncConnectionPoolSupport
+            .createBoundedObjectPoolAsync(
+                { client.connectAsync(StringCodec.UTF8, uri) },
+                BoundedPoolConfig.create()
+            ).toCompletableFuture().join()
 
     init {
-        logger.info { "Connected to Redis at ${redisConfig.host}:${redisConfig.port}" }
 
         Runtime.getRuntime().addShutdownHook(Thread {
             runCatching {
-                connection.close()
-                client.shutdown()
+                pool.closeAsync().toCompletableFuture().join()
+                client.shutdownAsync().toCompletableFuture().join()
             }.onSuccess {
-                logger.info { "Redis connection closed" }
+                logger.info { "Redis pool closed and client shutdown" }
             }.onFailure {
                 logger.warn(it) { "Error during Redis shutdown" }
             }
         })
+
+        logger.info { "Initialized Redis connection pool at ${uri.host}:${uri.port}" }
+
+
+        runCatching {
+            val connection = pool.acquire().toCompletableFuture().get()
+            pool.release(connection)
+            logger.info { "Successfully initialized Redis connection pool at ${uri.host}:${uri.port}" }
+        }.onFailure {
+            logger.error(it) { "Failed to initialize Redis pool at ${uri.host}:${uri.port}" }
+        }
+    }
+
+    private suspend fun <T> withConnection(action: suspend (RedisAsyncCommands<String, String>) -> T): T {
+        val connection = pool.acquire().await()
+        try {
+            return action(connection.async())
+        } finally {
+            pool.release(connection)
+        }
     }
 
     suspend fun get(key: String): String? =
-        runCatching { reactive.get(key).awaitFirstOrNull() }
+        runCatching { withConnection { it.get(key).await() } }
             .onFailure { logger.error(it) { "Failed to get key '$key'" } }
             .getOrNull()
 
     suspend fun set(key: String, value: String): Boolean =
-        runCatching { reactive.set(key, value).awaitFirstOrNull() == "OK" }
+        runCatching { withConnection { it.set(key, value).await() == "OK" } }
             .onFailure { logger.error(it) { "Failed to set key '$key'" } }
             .getOrDefault(false)
 
     suspend fun setWithExpiry(key: String, value: String, ttlSeconds: Long): Boolean =
-        runCatching { reactive.setex(key, ttlSeconds, value).awaitFirstOrNull() == "OK" }
+        runCatching { withConnection { it.setex(key, ttlSeconds, value).await() == "OK" } }
             .onFailure { logger.error(it) { "Failed to set key '$key' with expiry ($ttlSeconds s)" } }
             .getOrDefault(false)
 
-    suspend fun isAlive(): Boolean =
-        runCatching { reactive.ping().awaitFirstOrNull() == "PONG" }
+    suspend fun delete(key: String): Boolean =
+        runCatching { withConnection { it.del(key).await() == 1L } }
+            .onFailure { logger.error(it) { "Failed to delete key '$key'" } }
             .getOrDefault(false)
 
-    fun reconnect() {
+    suspend fun <T> getTyped(key: String, serializer: KSerializer<T>): T? =
         runCatching {
-            connection.close()
-            connection = client.connect()
-            reactive = connection.reactive()
-        }.onSuccess {
-            logger.info { "Reconnected to Redis" }
+            withConnection {
+                it.get(key).await()?.let { json.decodeFromString(serializer, it) }
+            }
         }.onFailure {
-            logger.error(it) { "Failed to reconnect to Redis" }
-        }
-    }
-
-    val json = Json { ignoreUnknownKeys = true }
-
-    suspend inline fun <reified T> getTyped(key: String): T? =
-        runCatching {
-            reactive.get(key).awaitFirstOrNull()?.let { json.decodeFromString<T>(it) }
-        }.onFailure {
-            logger.error(it) { "Failed to deserialize key '$key' to ${T::class.simpleName}" }
+            logger.error(it) { "Failed to deserialize key '$key'" }
         }.getOrNull()
 
-    suspend inline fun <reified T> setTyped(key: String, value: T): Boolean =
+    suspend fun <T> setTyped(key: String, value: T, serializer: KSerializer<T>): Boolean =
         runCatching {
-            val encoded = json.encodeToString(value)
-            reactive.set(key, encoded).awaitFirstOrNull() == "OK"
+            val encoded = json.encodeToString(serializer, value)
+            withConnection {
+                it.set(key, encoded).await() == "OK"
+            }
         }.onFailure {
             logger.error(it) { "Failed to serialize and set key '$key'" }
         }.getOrDefault(false)
 
-
-    suspend inline fun <reified T> setTypedWithExpiry(
-        key: String,
-        value: T,
-        ttlSeconds: Long
-    ): Boolean =
+    suspend fun <T> setTypedWithExpiry(key: String, value: T, ttlSeconds: Long, serializer: KSerializer<T>): Boolean =
         runCatching {
-            val encoded = json.encodeToString(value)
-            reactive.setex(key, ttlSeconds, encoded).awaitFirstOrNull() == "OK"
+            val encoded = json.encodeToString(serializer, value)
+            withConnection {
+                it.setex(key, ttlSeconds, encoded).await() == "OK"
+            }
         }.onFailure {
             logger.error(it) { "Failed to set key '$key' with expiry ($ttlSeconds s)" }
         }.getOrDefault(false)
-
 
 }

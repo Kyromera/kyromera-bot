@@ -73,6 +73,7 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-json:${exposedVersion}")
 
     implementation("io.lettuce:lettuce-core:6.6.0.RELEASE")
+    implementation("org.apache.commons:commons-pool2:2.12.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.1")
 
