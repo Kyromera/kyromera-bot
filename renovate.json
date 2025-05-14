@@ -1,6 +1,19 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ]
+  "extends": ["config:base"],
+  "labels": ["dependencies"],
+  "dependencyDashboard": true,
+  "enabledManagers": ["gradle"],
+  "gradle": {
+    "enabled": true,
+    "fileMatch": ["(^|/)build.gradle.kts$"]
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["gradle"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "automerge": false,
+      "separateMinorPatch": true
+    }
+  ],
+  "rebaseWhen": "conflicted"
 }
