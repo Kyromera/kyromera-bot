@@ -10,18 +10,25 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 
-data class DatabaseConfig(val serverName: String, val port: Int, val name: String, val user: String, val password: String) {
+data class DatabaseConfig(
+    val serverName: String,
+    val port: Int,
+    val name: String,
+    val user: String,
+    val password: String
+) {
     val url: String
         get() = "jdbc:postgresql://$serverName:$port/$name"
 }
 
 data class RedisConfig(val host: String, val port: Int, val password: String)
 
-data class Config(val token: String,
-                  val ownerIds: List<Long>,
-                  val testGuildIds: List<Long>,
-                  val databaseConfig: DatabaseConfig,
-                  val redisConfig: RedisConfig
+data class Config(
+    val token: String,
+    val ownerIds: List<Long>,
+    val testGuildIds: List<Long>,
+    val databaseConfig: DatabaseConfig,
+    val redisConfig: RedisConfig
 ) {
 
     companion object {
@@ -58,7 +65,8 @@ data class Config(val token: String,
             val dbPort = System.getenv("POSTGRES_PORT")?.toIntOrNull() ?: 5432
             val dbName = System.getenv("POSTGRES_DB") ?: throw IllegalStateException("Missing POSTGRES_DB")
             val dbUser = System.getenv("POSTGRES_USER") ?: throw IllegalStateException("Missing POSTGRES_USER")
-            val dbPassword = System.getenv("POSTGRES_PASSWORD") ?: throw IllegalStateException("Missing POSTGRES_PASSWORD")
+            val dbPassword =
+                System.getenv("POSTGRES_PASSWORD") ?: throw IllegalStateException("Missing POSTGRES_PASSWORD")
 
             val redisHost = System.getenv("REDIS_HOST") ?: throw IllegalStateException("Missing REDIS_HOST")
             val redisPort = System.getenv("REDIS_PORT")?.toIntOrNull() ?: 6379

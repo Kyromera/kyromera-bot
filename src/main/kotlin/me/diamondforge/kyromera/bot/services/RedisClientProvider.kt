@@ -26,7 +26,7 @@ class RedisClientProvider(config: Config) {
             }
         }.build()
     }
-    
+
     private val client: RedisClient = RedisClient.create()
     private val json = Json { ignoreUnknownKeys = true }
 
