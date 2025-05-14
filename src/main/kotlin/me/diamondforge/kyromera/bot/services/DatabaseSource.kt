@@ -1,10 +1,11 @@
-package me.diamondforge.kyromera.bot.configuration
+package me.diamondforge.kyromera.bot.services
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.github.freya022.botcommands.api.core.db.HikariSourceSupplier
 import io.github.freya022.botcommands.api.core.service.annotations.BService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import me.diamondforge.kyromera.bot.configuration.Config
 import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
 import kotlin.time.Duration.Companion.seconds
