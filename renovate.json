@@ -10,7 +10,6 @@
   "packageRules": [
     {
       "matchManagers": ["gradle"],
-      "matchUpdateTypes": ["major", "minor", "patch"],
       "automerge": false,
       "separateMinorPatch": true
     }
