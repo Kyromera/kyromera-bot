@@ -15,10 +15,7 @@ data class DatabaseConfig(val serverName: String, val port: Int, val name: Strin
         get() = "jdbc:postgresql://$serverName:$port/$name"
 }
 
-data class RedisConfig(val host: String, val port: Int, val password: String){
-    val url: String
-        get() = "redis://:$password@$host:$port"
-}
+data class RedisConfig(val host: String, val port: Int, val password: String)
 
 data class Config(val token: String,
                   val ownerIds: List<Long>,
