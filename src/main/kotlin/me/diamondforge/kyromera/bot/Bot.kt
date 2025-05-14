@@ -23,18 +23,16 @@ lateinit var jda: ShardManager
 @BService
 class Bot(private val config: Config) : JDAService() {
     override val intents: Set<GatewayIntent> =
-        defaultIntents + GatewayIntent.GUILD_MEMBERS + GatewayIntent.MESSAGE_CONTENT
+        defaultIntents + GatewayIntent.GUILD_MEMBERS
 
 
-    override val cacheFlags: Set<CacheFlag> = setOf(
-        CacheFlag.VOICE_STATE,
-        CacheFlag.MEMBER_OVERRIDES,
-    )
+    override val cacheFlags: Set<CacheFlag> = emptySet()
+
 
     override fun createJDA(event: BReadyEvent, eventManager: IEventManager) {
         val shardManager = DefaultShardManagerBuilder.createDefault(config.token, intents).apply {
             enableCache(cacheFlags)
-            setMemberCachePolicy(MemberCachePolicy.lru(5000).and(MemberCachePolicy.DEFAULT))
+            //setMemberCachePolicy(MemberCachePolicy.lru(5000).and(MemberCachePolicy.DEFAULT))
             setChunkingFilter(ChunkingFilter.NONE)
             setStatus(OnlineStatus.DO_NOT_DISTURB)
             setActivityProvider { Activity.playing("Booting up...") }
