@@ -25,18 +25,42 @@ data class Config(val token: String,
         private val logger = KotlinLogging.logger { }
 
         private val configFilePath: Path = Environment.configFolder.resolve("config.json")
-            .also {
-                if (!it.exists()) {
-                    logger.error { "Configuration file not found at ${it.absolutePathString()}" }
-                    throw IllegalStateException("Configuration file not found")
-                }
-            }
 
         @get:BService
         val instance: Config by lazy {
-            logger.info { "Loading configuration at ${configFilePath.absolutePathString()}" }
+            val source = System.getenv("CONFIG_SOURCE")?.lowercase()
 
+            if (source == "env") {
+                logger.info { "Loading configuration from environment variables" }
+                return@lazy loadFromEnv()
+            }
+
+            if (!configFilePath.exists()) {
+                logger.error { "Configuration file not found at ${configFilePath.absolutePathString()}" }
+                throw IllegalStateException("Configuration file not found")
+            }
+
+            logger.info { "Loading configuration from file at ${configFilePath.absolutePathString()}" }
             return@lazy DefaultObjectMapper.mapper.readValue(configFilePath.readText())
         }
+
+        private fun loadFromEnv(): Config {
+            val token = System.getenv("BOT_TOKEN") ?: throw IllegalStateException("Missing BOT_TOKEN")
+            val ownerIds = System.getenv("OWNER_IDS")?.replace(" ", "")?.split(",")?.map { it.toLong() }
+                ?: throw IllegalStateException("Missing OWNER_IDS")
+            val testGuildIds = System.getenv("TEST_GUILD_IDS")?.replace(" ", "")?.split(",")?.map { it.toLong() }
+                ?: throw IllegalStateException("Missing TEST_GUILD_IDS")
+
+            val dbServer = System.getenv("POSTGRES_HOST") ?: throw IllegalStateException("Missing POSTGRES_HOST")
+            val dbPort = System.getenv("POSTGRES_PORT")?.toIntOrNull() ?: 5432
+            val dbName = System.getenv("POSTGRES_DB") ?: throw IllegalStateException("Missing POSTGRES_DB")
+            val dbUser = System.getenv("POSTGRES_USER") ?: throw IllegalStateException("Missing POSTGRES_USER")
+            val dbPassword = System.getenv("POSTGRES_PASSWORD") ?: throw IllegalStateException("Missing POSTGRES_PASSWORD")
+
+            val databaseConfig = DatabaseConfig(dbServer, dbPort, dbName, dbUser, dbPassword)
+
+            return Config(token, ownerIds, testGuildIds, databaseConfig)
+        }
     }
+
 }
