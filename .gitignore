@@ -34,6 +34,8 @@ logs/
 config/
 config.json
 .env
+kyromera_data
+workspace.xml
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
