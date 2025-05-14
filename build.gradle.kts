@@ -5,7 +5,7 @@ plugins {
     java
     kotlin("plugin.serialization") version "2.1.21"
     application
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 application {
