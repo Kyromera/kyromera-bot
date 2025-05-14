@@ -29,7 +29,7 @@ class Bot(private val config: Config) : JDAService() {
 
 
     override fun createJDA(event: BReadyEvent, eventManager: IEventManager) {
-        val shardManager = DefaultShardManagerBuilder.createDefault(config.token, intents).apply {
+        jda = DefaultShardManagerBuilder.createDefault(config.token, intents).apply {
             enableCache(cacheFlags)
             //setMemberCachePolicy(MemberCachePolicy.lru(5000).and(MemberCachePolicy.DEFAULT))
             setChunkingFilter(ChunkingFilter.NONE)
@@ -37,8 +37,7 @@ class Bot(private val config: Config) : JDAService() {
             setActivityProvider { Activity.playing("Booting up...") }
             setEventManagerProvider { eventManager }
         }.build()
-        jda = shardManager
-        logger.info { "Booting up ${shardManager.shards.size} shards" }
+        logger.info { "Booting up ${jda.shards.size} shards" }
     }
 
 }
