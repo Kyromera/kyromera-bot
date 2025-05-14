@@ -75,7 +75,7 @@ dependencies {
     implementation("io.lettuce:lettuce-core:6.6.0.RELEASE")
     implementation("org.apache.commons:commons-pool2:2.12.1")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:10.11.0")
