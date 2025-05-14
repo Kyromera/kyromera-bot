@@ -15,10 +15,16 @@ data class DatabaseConfig(val serverName: String, val port: Int, val name: Strin
         get() = "jdbc:postgresql://$serverName:$port/$name"
 }
 
+data class RedisConfig(val host: String, val port: Int, val password: String){
+    val url: String
+        get() = "redis://:$password@$host:$port"
+}
+
 data class Config(val token: String,
                   val ownerIds: List<Long>,
                   val testGuildIds: List<Long>,
-                  val databaseConfig: DatabaseConfig
+                  val databaseConfig: DatabaseConfig,
+                  val redisConfig: RedisConfig
 ) {
 
     companion object {
@@ -57,9 +63,15 @@ data class Config(val token: String,
             val dbUser = System.getenv("POSTGRES_USER") ?: throw IllegalStateException("Missing POSTGRES_USER")
             val dbPassword = System.getenv("POSTGRES_PASSWORD") ?: throw IllegalStateException("Missing POSTGRES_PASSWORD")
 
+            val redisHost = System.getenv("REDIS_HOST") ?: throw IllegalStateException("Missing REDIS_HOST")
+            val redisPort = System.getenv("REDIS_PORT")?.toIntOrNull() ?: 6379
+            val redisPassword = System.getenv("REDIS_PASSWORD") ?: throw IllegalStateException("Missing REDIS_PASSWORD")
+
+            val redisConfig = RedisConfig(redisHost, redisPort, redisPassword)
+
             val databaseConfig = DatabaseConfig(dbServer, dbPort, dbName, dbUser, dbPassword)
 
-            return Config(token, ownerIds, testGuildIds, databaseConfig)
+            return Config(token, ownerIds, testGuildIds, databaseConfig, redisConfig)
         }
     }
 

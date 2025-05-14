@@ -72,6 +72,10 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-kotlin-datetime:${exposedVersion}")
     implementation("org.jetbrains.exposed:exposed-json:${exposedVersion}")
 
+    implementation("io.lettuce:lettuce-core:6.6.0.RELEASE")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.1")
+
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:10.11.0")
 }
