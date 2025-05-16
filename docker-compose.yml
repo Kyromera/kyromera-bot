@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:8-alpine
+    container_name: kyromera-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - ./kyromera_data/redis-data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: kyromera-postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./kyromera_data/postgres-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Bot cluster instances - scale this service to add more clusters
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      # Config source
+      CONFIG_SOURCE: env
+      
+      # Bot config
+      BOT_TOKEN: ${BOT_TOKEN}
+      OWNER_IDS: ${OWNER_IDS}
+      TEST_GUILD_IDS: ${TEST_GUILD_IDS}
+      
+      # Auto-Clustering Configuration
+      TOTAL_SHARDS: ${TOTAL_SHARDS:-1}
+      TOTAL_CLUSTERS: ${TOTAL_CLUSTERS:-1}
+      # CLUSTER_ID is auto-detected
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - backend
+    restart: unless-stopped
+    # Deploy multiple replicas to create a cluster
+    deploy:
+      replicas: ${TOTAL_CLUSTERS:-1}
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:

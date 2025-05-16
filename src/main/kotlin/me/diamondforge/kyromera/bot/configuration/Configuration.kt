@@ -23,12 +23,19 @@ data class DatabaseConfig(
 
 data class RedisConfig(val host: String, val port: Int, val password: String)
 
+data class ShardingConfig(
+    val totalShards: Int,
+    val totalClusters: Int,
+    val clusterId: Int? = null
+)
+
 data class Config(
     val token: String,
     val ownerIds: List<Long>,
     val testGuildIds: List<Long>,
     val databaseConfig: DatabaseConfig,
-    val redisConfig: RedisConfig
+    val redisConfig: RedisConfig,
+    val shardingConfig: ShardingConfig
 ) {
 
     companion object {
@@ -76,7 +83,12 @@ data class Config(
 
             val databaseConfig = DatabaseConfig(dbServer, dbPort, dbName, dbUser, dbPassword)
 
-            return Config(token, ownerIds, testGuildIds, databaseConfig, redisConfig)
+            val totalShards = System.getenv("TOTAL_SHARDS")?.toIntOrNull() ?: 1
+            val totalClusters = System.getenv("TOTAL_CLUSTERS")?.toIntOrNull() ?: 1
+            val clusterId = System.getenv("CLUSTER_ID")?.toIntOrNull()
+            val shardingConfig = ShardingConfig(totalShards, totalClusters, clusterId)
+
+            return Config(token, ownerIds, testGuildIds, databaseConfig, redisConfig, shardingConfig)
         }
     }
 

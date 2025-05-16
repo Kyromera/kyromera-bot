@@ -55,7 +55,9 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.postgresql:postgresql:42.7.5")
-    implementation("net.dv8tion:JDA:5.5.1")
+    implementation("net.dv8tion:JDA:5.5.1") {
+        exclude(module = "opus-java")
+    }
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
     implementation("org.flywaydb:flyway-core:11.8.2")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
