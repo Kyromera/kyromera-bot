@@ -36,20 +36,15 @@ class Bot(
 
 
     init {
-
         Runtime.getRuntime().addShutdownHook(Thread {
-            logger.info { "Bot shutdown hook triggered, shutting down JDA and ClusterCoordinator..." }
+            logger.info { "Bot shutdown hook triggered, shutting down JDA..." }
 
             try {
-
                 if (::jda.isInitialized) {
                     logger.info { "Shutting down JDA..." }
                     jda.shutdown()
 
-
                     try {
-
-
                         logger.info { "Waiting for JDA to shutdown (max 10 seconds)..." }
                         Thread.sleep(10000)
                         logger.info { "JDA shutdown wait completed" }
@@ -58,16 +53,19 @@ class Bot(
                     }
                 }
 
-
-                logger.info { "Shutting down ClusterCoordinator..." }
-                runBlocking {
-                    try {
-                        val job = clusterCoordinator.shutdown()
-                        job.join()
-                        logger.info { "ClusterCoordinator shutdown completed successfully" }
-                    } catch (e: Exception) {
-                        logger.error(e) { "Error shutting down ClusterCoordinator" }
+                if (config.shardingConfig != null) {
+                    logger.info { "Shutting down ClusterCoordinator..." }
+                    runBlocking {
+                        try {
+                            val job = clusterCoordinator.shutdown()
+                            job.join()
+                            logger.info { "ClusterCoordinator shutdown completed successfully" }
+                        } catch (e: Exception) {
+                            logger.error(e) { "Error shutting down ClusterCoordinator" }
+                        }
                     }
+                } else {
+                    logger.info { "Sharding not enabled, skipping ClusterCoordinator shutdown" }
                 }
             } catch (e: Exception) {
                 logger.error(e) { "Error during Bot shutdown" }
@@ -81,51 +79,66 @@ class Bot(
 
 
     override fun createJDA(event: BReadyEvent, eventManager: IEventManager) {
-        val shardIds = clusterCoordinator.getShardIds()
-        val clusterId = clusterCoordinator.getClusterId()
+        if (config.shardingConfig != null) {
+            try {
+                val shardIds = clusterCoordinator.getShardIds()
+                val clusterId = clusterCoordinator.getClusterId()
 
+                val delayMs = clusterId * 10_000L
+                if (delayMs > 0) {
+                    logger.info { "Cluster $clusterId waiting for ${delayMs / 1000} seconds before initializing to avoid rate limits" }
+                    runBlocking { delay(delayMs) }
+                }
 
-        val delayMs = clusterId * 10_000L
-        if (delayMs > 0) {
-            logger.info { "Cluster $clusterId waiting for ${delayMs / 1000} seconds before initializing to avoid rate limits" }
-            runBlocking { delay(delayMs) }
+                logger.info { "Initializing cluster $clusterId with shards $shardIds" }
+
+                jda = DefaultShardManagerBuilder.createLight(config.token, intents).apply {
+                    enableCache(cacheFlags)
+
+                    setChunkingFilter(ChunkingFilter.NONE)
+                    setStatus(OnlineStatus.DO_NOT_DISTURB)
+                    setActivity(Activity.playing("Cluster $clusterId"))
+                    setEventManagerProvider { eventManager }
+
+                    setShardsTotal(config.shardingConfig.totalShards)
+                    setShards(shardIds)
+                }.build()
+
+                logger.info { "Cluster $clusterId is running with ${jda.shards.size} shards: $shardIds" }
+            } catch (e: Exception) {
+                logger.error(e) { "Error initializing clustered sharding, falling back to auto-sharding" }
+                initializeAutoSharding(eventManager)
+            }
+        } else {
+            initializeAutoSharding(eventManager)
         }
 
-        logger.info { "Initializing cluster $clusterId with shards $shardIds" }
+        jda.setStatus(OnlineStatus.ONLINE)
+    }
+
+    private fun initializeAutoSharding(eventManager: IEventManager) {
+        logger.info { "Using Discord's auto-sharding" }
 
         jda = DefaultShardManagerBuilder.createLight(config.token, intents).apply {
             enableCache(cacheFlags)
-
             setChunkingFilter(ChunkingFilter.NONE)
             setStatus(OnlineStatus.DO_NOT_DISTURB)
-            setActivity(Activity.playing("Cluster $clusterId"))
             setEventManagerProvider { eventManager }
 
-
-            setShardsTotal(config.shardingConfig.totalShards)
-            setShards(shardIds)
-
-
+            setAutoReconnect(true)
         }.build()
 
-        logger.info { "Cluster $clusterId is running with ${jda.shards.size} shards: $shardIds" }
-
-
-        jda.setStatus(OnlineStatus.ONLINE)
+        logger.info { "Bot is running with auto-sharding, total shards: ${jda.shards.size}" }
     }
 
     fun shutdown(): Job {
         logger.info { "Shutting down Bot..." }
 
-
         if (::jda.isInitialized) {
             logger.info { "Shutting down JDA..." }
             jda.shutdown()
 
-
             try {
-
-
                 logger.info { "Waiting for JDA to shutdown (max 10 seconds)..." }
                 Thread.sleep(10000)
                 logger.info { "JDA shutdown wait completed" }
@@ -134,8 +147,12 @@ class Bot(
             }
         }
 
-
-        logger.info { "Shutting down ClusterCoordinator..." }
-        return clusterCoordinator.shutdown()
+        if (config.shardingConfig != null) {
+            logger.info { "Shutting down ClusterCoordinator..." }
+            return clusterCoordinator.shutdown()
+        } else {
+            logger.info { "Sharding not enabled, skipping ClusterCoordinator shutdown" }
+            return Job().apply { complete() }
+        }
     }
 }

@@ -35,7 +35,7 @@ data class Config(
     val testGuildIds: List<Long>,
     val databaseConfig: DatabaseConfig,
     val redisConfig: RedisConfig,
-    val shardingConfig: ShardingConfig
+    val shardingConfig: ShardingConfig? = null
 ) {
 
     companion object {

@@ -56,40 +56,41 @@ object Main {
                 logger.info { "Application shutdown hook triggered, performing cleanup..." }
 
                 try {
+                    
+                    if (config.shardingConfig != null) {
+                        val botCommandsClass = Class.forName("io.github.freya022.botcommands.api.core.BotCommands")
+                        val instanceField = botCommandsClass.getDeclaredField("INSTANCE")
+                        instanceField.isAccessible = true
+                        val botCommandsInstance = instanceField.get(null)
 
+                        if (botCommandsInstance != null) {
+                            val getServiceProviderMethod = botCommandsClass.getDeclaredMethod("getServiceProvider")
+                            getServiceProviderMethod.isAccessible = true
+                            val serviceProvider = getServiceProviderMethod.invoke(botCommandsInstance)
 
-                    val botCommandsClass = Class.forName("io.github.freya022.botcommands.api.core.BotCommands")
-                    val instanceField = botCommandsClass.getDeclaredField("INSTANCE")
-                    instanceField.isAccessible = true
-                    val botCommandsInstance = instanceField.get(null)
+                            if (serviceProvider != null) {
+                                val getServiceMethod =
+                                    serviceProvider.javaClass.getDeclaredMethod("getService", Class::class.java)
+                                getServiceMethod.isAccessible = true
+                                val clusterCoordinator = getServiceMethod.invoke(
+                                    serviceProvider,
+                                    ClusterCoordinator::class.java
+                                ) as? ClusterCoordinator
 
-                    if (botCommandsInstance != null) {
+                                if (clusterCoordinator != null) {
+                                    logger.info { "Found ClusterCoordinator instance, shutting down..." }
 
-                        val getServiceProviderMethod = botCommandsClass.getDeclaredMethod("getServiceProvider")
-                        getServiceProviderMethod.isAccessible = true
-                        val serviceProvider = getServiceProviderMethod.invoke(botCommandsInstance)
-
-                        if (serviceProvider != null) {
-
-                            val getServiceMethod =
-                                serviceProvider.javaClass.getDeclaredMethod("getService", Class::class.java)
-                            getServiceMethod.isAccessible = true
-                            val clusterCoordinator = getServiceMethod.invoke(
-                                serviceProvider,
-                                ClusterCoordinator::class.java
-                            ) as? ClusterCoordinator
-
-                            if (clusterCoordinator != null) {
-                                logger.info { "Found ClusterCoordinator instance, shutting down..." }
-
-                                runBlocking {
-                                    clusterCoordinator.shutdown().join()
+                                    runBlocking {
+                                        clusterCoordinator.shutdown().join()
+                                    }
+                                    logger.info { "ClusterCoordinator shutdown completed" }
+                                } else {
+                                    logger.warn { "ClusterCoordinator instance not found, skipping cleanup" }
                                 }
-                                logger.info { "ClusterCoordinator shutdown completed" }
-                            } else {
-                                logger.warn { "ClusterCoordinator instance not found, skipping cleanup" }
                             }
                         }
+                    } else {
+                        logger.info { "Sharding not enabled, skipping ClusterCoordinator shutdown" }
                     }
                 } catch (e: Exception) {
                     logger.error(e) { "Error during application shutdown cleanup" }

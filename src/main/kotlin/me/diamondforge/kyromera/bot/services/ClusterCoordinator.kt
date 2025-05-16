@@ -26,13 +26,14 @@ class ClusterCoordinator(
         private const val HEARTBEAT_STALE_MULTIPLIER = 4
     }
 
-    private val clusterId: Int
-    private val clusterInfo: ClusterInfo
-    private val shardIds: List<Int>
+    private var clusterId: Int = 0
+    private lateinit var clusterInfo: ClusterInfo
+    private var shardIds: List<Int> = emptyList()
     private val isRunning = AtomicBoolean(true)
-    private val heartbeatJob: Job
+    private var heartbeatJob: Job = Job()
     private lateinit var cleanupJob: Job
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
+    private val isShardingEnabled: Boolean
 
     private val hostname: String by lazy {
         try {
@@ -44,42 +45,53 @@ class ClusterCoordinator(
     }
 
     init {
-        runBlocking {
-            try {
-                val cleanedUp = cleanupStaleRegistrations(forceCleanup = true)
-                if (cleanedUp > 0) {
-                    logger.info { "Cleaned up $cleanedUp stale cluster registrations during initialization" }
-                }
-            } catch (e: Exception) {
-                logger.warn(e) { "Error cleaning up stale registrations during initialization" }
-            }
-        }
+        isShardingEnabled = config.shardingConfig != null
 
-        clusterId = determineClusterId()
-
-        shardIds = calculateShardIds()
-
-        clusterInfo = ClusterInfo(
-            id = clusterId,
-            hostname = hostname,
-            shardIds = shardIds,
-            startTime = System.currentTimeMillis()
-        )
-
-        registerCluster()
-
-        heartbeatJob = startHeartbeat()
-
-        Runtime.getRuntime().addShutdownHook(Thread {
+        if (isShardingEnabled) {
             runBlocking {
-                shutdown().join()
+                try {
+                    val cleanedUp = cleanupStaleRegistrations(forceCleanup = true)
+                    if (cleanedUp > 0) {
+                        logger.info { "Cleaned up $cleanedUp stale cluster registrations during initialization" }
+                    }
+                } catch (e: Exception) {
+                    logger.warn(e) { "Error cleaning up stale registrations during initialization" }
+                }
             }
-        })
 
-        logger.info { "Initialized cluster $clusterId with shards $shardIds" }
+            clusterId = determineClusterId()
+            shardIds = calculateShardIds()
+
+            clusterInfo = ClusterInfo(
+                id = clusterId,
+                hostname = hostname,
+                shardIds = shardIds,
+                startTime = System.currentTimeMillis()
+            )
+
+            registerCluster()
+            heartbeatJob = startHeartbeat()
+
+            Runtime.getRuntime().addShutdownHook(Thread {
+                runBlocking {
+                    shutdown().join()
+                }
+            })
+
+            logger.info { "Initialized cluster $clusterId with shards $shardIds" }
+        } else {
+            logger.info { "Sharding is not enabled, ClusterCoordinator will use default values" }
+            clusterId = 0
+            shardIds = listOf(0)
+        }
     }
 
     private fun determineClusterId(): Int {
+        if (config.shardingConfig == null) {
+            logger.info { "No sharding configuration provided, using default cluster ID 0" }
+            return 0
+        }
+
         config.shardingConfig.clusterId?.let { return it }
 
         return runBlocking {
@@ -227,8 +239,8 @@ class ClusterCoordinator(
     }
 
     private fun calculateShardIds(): List<Int> {
-        val totalShards = config.shardingConfig.totalShards
-        val totalClusters = config.shardingConfig.totalClusters
+        val totalShards = config.shardingConfig?.totalShards ?: 1
+        val totalClusters = config.shardingConfig?.totalClusters ?: 1
 
 
         if (totalClusters == 1) {
