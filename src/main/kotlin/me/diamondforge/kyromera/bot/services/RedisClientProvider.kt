@@ -29,14 +29,16 @@ class RedisClientProvider(config: Config) {
     }
 
     private val client: RedisClient = RedisClient.create().apply {
-        
+
         options = io.lettuce.core.ClientOptions.builder()
             .disconnectedBehavior(io.lettuce.core.ClientOptions.DisconnectedBehavior.REJECT_COMMANDS)
             .autoReconnect(true)
-            .socketOptions(io.lettuce.core.SocketOptions.builder()
-                .connectTimeout(java.time.Duration.ofSeconds(5))
-                .keepAlive(true)
-                .build())
+            .socketOptions(
+                io.lettuce.core.SocketOptions.builder()
+                    .connectTimeout(java.time.Duration.ofSeconds(5))
+                    .keepAlive(true)
+                    .build()
+            )
             .build()
     }
     private val json = Json { ignoreUnknownKeys = true }
@@ -47,14 +49,14 @@ class RedisClientProvider(config: Config) {
             .createBoundedObjectPoolAsync(
                 { client.connectAsync(StringCodec.UTF8, uri) },
                 BoundedPoolConfig.builder()
-                    .maxTotal(16)  
-                    .maxIdle(8)    
-                    .minIdle(2)    
+                    .maxTotal(16)
+                    .maxIdle(8)
+                    .minIdle(2)
                     .build()
             ).toCompletableFuture().join()
 
     init {
-        
+
         Runtime.getRuntime().addShutdownHook(Thread {
             runCatching {
                 logger.info { "Shutting down Redis connection pool and client..." }
@@ -70,7 +72,6 @@ class RedisClientProvider(config: Config) {
         logger.info { "Initialized Redis connection pool at ${uri.host}:${uri.port} with maxTotal=16, maxIdle=8, minIdle=2" }
 
 
-        
         var success = false
         var attempts = 0
         val maxAttempts = 5
@@ -87,7 +88,7 @@ class RedisClientProvider(config: Config) {
                 if (attempts < maxAttempts) {
                     val delayMs = 500L * attempts
                     logger.warn(e) { "Failed to test Redis connection (attempt $attempts/$maxAttempts), retrying in ${delayMs}ms..." }
-                    Thread.sleep(delayMs) 
+                    Thread.sleep(delayMs)
                 } else {
                     logger.error(e) { "Failed to initialize Redis pool at ${uri.host}:${uri.port} after $maxAttempts attempts" }
                     logger.warn { "The application will continue, but Redis operations may fail until the connection is established" }
@@ -134,7 +135,7 @@ class RedisClientProvider(config: Config) {
                     }
                     return true
                 } else {
-                    
+
                     if (attempts > 1) {
                         logger.debug { "Key '$key' not found or already deleted (attempt $attempts/$maxRetries)" }
                     }
@@ -145,9 +146,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to delete key '$key' (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -156,7 +157,7 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to delete key '$key' after $maxRetries attempts" }
         return false
     }
@@ -182,9 +183,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to retrieve or deserialize key '$key' (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -193,7 +194,7 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to retrieve or deserialize key '$key' after $maxRetries attempts" }
         return null
     }
@@ -208,7 +209,13 @@ class RedisClientProvider(config: Config) {
             logger.error(it) { "Failed to serialize and set key '$key'" }
         }.getOrDefault(false)
 
-    suspend fun <T> setTypedWithExpiry(key: String, value: T, ttlSeconds: Long, serializer: KSerializer<T>, maxRetries: Int = 5): Boolean {
+    suspend fun <T> setTypedWithExpiry(
+        key: String,
+        value: T,
+        ttlSeconds: Long,
+        serializer: KSerializer<T>,
+        maxRetries: Int = 5
+    ): Boolean {
         var attempts = 0
         var lastException: Exception? = null
         val encoded = json.encodeToString(serializer, value)
@@ -233,9 +240,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to set key '$key' with expiry (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -244,12 +251,12 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to set key '$key' with expiry after $maxRetries attempts" }
         return false
     }
 
-    
+
     suspend fun sadd(key: String, value: String, maxRetries: Int = 5): Boolean {
         var attempts = 0
         var lastException: Exception? = null
@@ -271,9 +278,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to add value to set '$key' (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -282,7 +289,7 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to add value to set '$key' after $maxRetries attempts" }
         return false
     }
@@ -304,9 +311,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to get members of set '$key' (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -315,7 +322,7 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to get members of set '$key' after $maxRetries attempts" }
         return emptySet()
     }
@@ -341,9 +348,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to remove value from set '$key' (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -352,12 +359,12 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to remove value from set '$key' after $maxRetries attempts" }
         return false
     }
 
-    
+
     suspend fun setnx(key: String, value: String, maxRetries: Int = 5): Boolean {
         var attempts = 0
         var lastException: Exception? = null
@@ -367,13 +374,13 @@ class RedisClientProvider(config: Config) {
             try {
                 val result = withConnection { it.setnx(key, value).await() }
 
-                
+
                 if (result) {
                     if (attempts > 1) {
                         logger.info { "Successfully set key '$key' with NX after $attempts attempts" }
                     }
                 } else {
-                    
+
                     logger.debug { "Key '$key' already exists, could not set with NX" }
                 }
 
@@ -383,9 +390,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to set key '$key' with NX (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -394,7 +401,7 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to set key '$key' with NX after $maxRetries attempts" }
         return false
     }
@@ -406,19 +413,19 @@ class RedisClientProvider(config: Config) {
         while (attempts < maxRetries) {
             attempts++
             try {
-                val result = withConnection { 
-                    
+                val result = withConnection {
+
                     val setArgs = io.lettuce.core.SetArgs.Builder.nx().ex(ttlSeconds)
                     it.set(key, value, setArgs).await() == "OK"
                 }
 
-                
+
                 if (result) {
                     if (attempts > 1) {
                         logger.info { "Successfully set key '$key' with NX and expiry after $attempts attempts" }
                     }
                 } else {
-                    
+
                     logger.debug { "Key '$key' already exists, could not set with NX" }
                 }
 
@@ -428,9 +435,9 @@ class RedisClientProvider(config: Config) {
                 logger.warn(e) { "Failed to set key '$key' with NX and expiry (attempt $attempts/$maxRetries)" }
 
                 if (attempts < maxRetries) {
-                    
+
                     val baseDelayMs = 100L
-                    val exponentialFactor = 1 shl minOf(attempts, 3) 
+                    val exponentialFactor = 1 shl minOf(attempts, 3)
                     val jitterMs = (Math.random() * baseDelayMs).toLong()
                     val delayMs = baseDelayMs * exponentialFactor + jitterMs
 
@@ -439,7 +446,7 @@ class RedisClientProvider(config: Config) {
             }
         }
 
-        
+
         logger.error(lastException) { "Failed to set key '$key' with NX and expiry after $maxRetries attempts" }
         return false
     }

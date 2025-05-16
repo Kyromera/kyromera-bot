@@ -4,13 +4,9 @@ import io.github.freya022.botcommands.api.core.JDAService
 import io.github.freya022.botcommands.api.core.events.BReadyEvent
 import io.github.freya022.botcommands.api.core.service.annotations.BService
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.future.await
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import me.diamondforge.kyromera.bot.configuration.Config
 import me.diamondforge.kyromera.bot.services.ClusterCoordinator
 import net.dv8tion.jda.api.OnlineStatus
@@ -21,9 +17,6 @@ import net.dv8tion.jda.api.sharding.DefaultShardManagerBuilder
 import net.dv8tion.jda.api.sharding.ShardManager
 import net.dv8tion.jda.api.utils.ChunkingFilter
 import net.dv8tion.jda.api.utils.cache.CacheFlag
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 
 private val logger by lazy { KotlinLogging.logger {} }
@@ -41,22 +34,22 @@ class Bot(
 
     override val cacheFlags: Set<CacheFlag> = emptySet()
 
-    
+
     init {
-        
+
         Runtime.getRuntime().addShutdownHook(Thread {
             logger.info { "Bot shutdown hook triggered, shutting down JDA and ClusterCoordinator..." }
 
             try {
-                
+
                 if (::jda.isInitialized) {
                     logger.info { "Shutting down JDA..." }
                     jda.shutdown()
 
-                    
+
                     try {
-                        
-                        
+
+
                         logger.info { "Waiting for JDA to shutdown (max 10 seconds)..." }
                         Thread.sleep(10000)
                         logger.info { "JDA shutdown wait completed" }
@@ -65,7 +58,7 @@ class Bot(
                     }
                 }
 
-                
+
                 logger.info { "Shutting down ClusterCoordinator..." }
                 runBlocking {
                     try {
@@ -91,11 +84,10 @@ class Bot(
         val shardIds = clusterCoordinator.getShardIds()
         val clusterId = clusterCoordinator.getClusterId()
 
-        
-        
+
         val delayMs = clusterId * 10_000L
         if (delayMs > 0) {
-            logger.info { "Cluster $clusterId waiting for ${delayMs/1000} seconds before initializing to avoid rate limits" }
+            logger.info { "Cluster $clusterId waiting for ${delayMs / 1000} seconds before initializing to avoid rate limits" }
             runBlocking { delay(delayMs) }
         }
 
@@ -103,38 +95,37 @@ class Bot(
 
         jda = DefaultShardManagerBuilder.createLight(config.token, intents).apply {
             enableCache(cacheFlags)
-            
+
             setChunkingFilter(ChunkingFilter.NONE)
             setStatus(OnlineStatus.DO_NOT_DISTURB)
             setActivity(Activity.playing("Cluster $clusterId"))
             setEventManagerProvider { eventManager }
 
-            
+
             setShardsTotal(config.shardingConfig.totalShards)
             setShards(shardIds)
 
-            
-            
+
         }.build()
 
         logger.info { "Cluster $clusterId is running with ${jda.shards.size} shards: $shardIds" }
 
-        
+
         jda.setStatus(OnlineStatus.ONLINE)
     }
 
-        fun shutdown(): Job {
+    fun shutdown(): Job {
         logger.info { "Shutting down Bot..." }
 
-        
+
         if (::jda.isInitialized) {
             logger.info { "Shutting down JDA..." }
             jda.shutdown()
 
-            
+
             try {
-                
-                
+
+
                 logger.info { "Waiting for JDA to shutdown (max 10 seconds)..." }
                 Thread.sleep(10000)
                 logger.info { "JDA shutdown wait completed" }
@@ -143,7 +134,7 @@ class Bot(
             }
         }
 
-        
+
         logger.info { "Shutting down ClusterCoordinator..." }
         return clusterCoordinator.shutdown()
     }

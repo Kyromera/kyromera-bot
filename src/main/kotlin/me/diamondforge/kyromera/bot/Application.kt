@@ -24,8 +24,8 @@ object Main {
     fun main(args: Array<out String>) {
 
         try {
-            
-            
+
+
             val customLogbackConfig = Environment.logbackConfigPath
             if (customLogbackConfig.exists()) {
                 System.setProperty(
@@ -51,36 +51,37 @@ object Main {
                 logger.warn { "Running in development mode" }
             }
 
-            
-            
-            
-            
+
             val shutdownHook = Thread {
                 logger.info { "Application shutdown hook triggered, performing cleanup..." }
 
                 try {
-                    
-                    
+
+
                     val botCommandsClass = Class.forName("io.github.freya022.botcommands.api.core.BotCommands")
                     val instanceField = botCommandsClass.getDeclaredField("INSTANCE")
                     instanceField.isAccessible = true
                     val botCommandsInstance = instanceField.get(null)
 
                     if (botCommandsInstance != null) {
-                        
+
                         val getServiceProviderMethod = botCommandsClass.getDeclaredMethod("getServiceProvider")
                         getServiceProviderMethod.isAccessible = true
                         val serviceProvider = getServiceProviderMethod.invoke(botCommandsInstance)
 
                         if (serviceProvider != null) {
-                            
-                            val getServiceMethod = serviceProvider.javaClass.getDeclaredMethod("getService", Class::class.java)
+
+                            val getServiceMethod =
+                                serviceProvider.javaClass.getDeclaredMethod("getService", Class::class.java)
                             getServiceMethod.isAccessible = true
-                            val clusterCoordinator = getServiceMethod.invoke(serviceProvider, ClusterCoordinator::class.java) as? ClusterCoordinator
+                            val clusterCoordinator = getServiceMethod.invoke(
+                                serviceProvider,
+                                ClusterCoordinator::class.java
+                            ) as? ClusterCoordinator
 
                             if (clusterCoordinator != null) {
                                 logger.info { "Found ClusterCoordinator instance, shutting down..." }
-                                
+
                                 runBlocking {
                                     clusterCoordinator.shutdown().join()
                                 }
@@ -97,7 +98,7 @@ object Main {
                 logger.info { "Application shutdown hook completed" }
             }
 
-            
+
             Runtime.getRuntime().addShutdownHook(shutdownHook)
             logger.info { "Added application-level shutdown hook" }
 
