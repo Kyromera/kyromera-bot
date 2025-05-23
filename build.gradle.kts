@@ -79,6 +79,7 @@ dependencies {
 
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:11.8.2")
+    testImplementation(kotlin("test"))
 }
 
 tasks.test {
