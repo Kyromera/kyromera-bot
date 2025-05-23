@@ -4,10 +4,8 @@ import dev.reformator.stacktracedecoroutinator.jvm.DecoroutinatorJvmApi
 import io.github.freya022.botcommands.api.core.BotCommands
 import io.github.freya022.botcommands.api.core.config.DevConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.runBlocking
 import me.diamondforge.kyromera.bot.configuration.Config
 import me.diamondforge.kyromera.bot.configuration.Environment
-import me.diamondforge.kyromera.bot.services.ClusterCoordinator
 import net.dv8tion.jda.api.interactions.DiscordLocale
 import java.lang.management.ManagementFactory
 import kotlin.io.path.absolutePathString
@@ -51,57 +49,6 @@ object Main {
                 logger.warn { "Running in development mode" }
             }
 
-
-            val shutdownHook = Thread {
-                logger.info { "Application shutdown hook triggered, performing cleanup..." }
-
-                try {
-                    
-                    if (config.shardingConfig != null) {
-                        val botCommandsClass = Class.forName("io.github.freya022.botcommands.api.core.BotCommands")
-                        val instanceField = botCommandsClass.getDeclaredField("INSTANCE")
-                        instanceField.isAccessible = true
-                        val botCommandsInstance = instanceField.get(null)
-
-                        if (botCommandsInstance != null) {
-                            val getServiceProviderMethod = botCommandsClass.getDeclaredMethod("getServiceProvider")
-                            getServiceProviderMethod.isAccessible = true
-                            val serviceProvider = getServiceProviderMethod.invoke(botCommandsInstance)
-
-                            if (serviceProvider != null) {
-                                val getServiceMethod =
-                                    serviceProvider.javaClass.getDeclaredMethod("getService", Class::class.java)
-                                getServiceMethod.isAccessible = true
-                                val clusterCoordinator = getServiceMethod.invoke(
-                                    serviceProvider,
-                                    ClusterCoordinator::class.java
-                                ) as? ClusterCoordinator
-
-                                if (clusterCoordinator != null) {
-                                    logger.info { "Found ClusterCoordinator instance, shutting down..." }
-
-                                    runBlocking {
-                                        clusterCoordinator.shutdown().join()
-                                    }
-                                    logger.info { "ClusterCoordinator shutdown completed" }
-                                } else {
-                                    logger.warn { "ClusterCoordinator instance not found, skipping cleanup" }
-                                }
-                            }
-                        }
-                    } else {
-                        logger.info { "Sharding not enabled, skipping ClusterCoordinator shutdown" }
-                    }
-                } catch (e: Exception) {
-                    logger.error(e) { "Error during application shutdown cleanup" }
-                }
-
-                logger.info { "Application shutdown hook completed" }
-            }
-
-
-            Runtime.getRuntime().addShutdownHook(shutdownHook)
-            logger.info { "Added application-level shutdown hook" }
 
             BotCommands.create {
                 if (Environment.isDev) {
