@@ -15,4 +15,5 @@ object Environment {
     val dataFolder: Path = Path("data")
     val logbackConfigPath: Path = configFolder.resolve("logback.xml")
     val isDev: Boolean = configFolder.resolve(".dev").exists()
+    val isDbTest: Boolean = configFolder.resolve(".dbtest").exists()
 }

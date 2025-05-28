@@ -8,6 +8,10 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import me.diamondforge.kyromera.bot.configuration.Config
 import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.transactions.TransactionManager
+import org.jetbrains.exposed.sql.transactions.transaction
+import java.sql.Connection
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger { }
@@ -19,16 +23,37 @@ class DatabaseSource(config: Config) : HikariSourceSupplier {
         username = config.databaseConfig.user
         password = config.databaseConfig.password
 
-        maximumPoolSize = 2
+        maximumPoolSize = 5
+        schema = "public"
+        minimumIdle = 5
+        idleTimeout = 10.minutes.inWholeMilliseconds
+        maxLifetime = 30.minutes.inWholeMilliseconds
+        connectionTimeout = 30.seconds.inWholeMilliseconds
         leakDetectionThreshold = 10.seconds.inWholeMilliseconds
+
+        connectionTestQuery = "SELECT 1"
+        validationTimeout = 5.seconds.inWholeMilliseconds
+
+        poolName = "KyromeraConnectionPool"
+
+        addDataSourceProperty("cachePrepStmts", "true")
+        addDataSourceProperty("prepStmtCacheSize", "250")
+        addDataSourceProperty("prepStmtCacheSqlLimit", "2048")
     })
 
     init {
         createFlyway("bc", "bc_database_scripts").migrate()
-        createFlyway("public", "wiki_database_scripts").migrate()
+        createFlyway("public", "migrations").migrate()
 
         Database.connect(source)
-        logger.info { "Created database source" }
+
+        TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_READ_COMMITTED
+
+        transaction {
+            exec("SET search_path TO public")
+        }
+
+        logger.info { "Created database connection pool with HikariCP" }
     }
 
     private fun createFlyway(schema: String, scriptsLocation: String): Flyway = Flyway.configure()
