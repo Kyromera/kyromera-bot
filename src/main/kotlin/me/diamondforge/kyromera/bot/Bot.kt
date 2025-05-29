@@ -35,15 +35,15 @@ class Bot(private val config: Config, private val databaseSource: DatabaseSource
 
 
     override fun createJDA(event: BReadyEvent, eventManager: IEventManager) {
-        lightSharded(
+        val jda = lightSharded(
             token = config.token,
             memberCachePolicy = MemberCachePolicy.NONE,
             chunkingFilter = ChunkingFilter.NONE,
             activityProvider = { Activity.customStatus("Booting up...") },
         ) {
             setStatus(OnlineStatus.DO_NOT_DISTURB)
-            logger.info { "Booting up ${jda.shards.size} shards" }
         }
+        logger.info { "Booting up ${jda.shards.size} shards" }
         if (Environment.isDbTest) {
             logger.info { "Running in database development mode. Testing database connection pool..." }
             testDatabaseConnectionPool()
