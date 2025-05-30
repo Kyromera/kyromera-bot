@@ -131,4 +131,17 @@ class RedisClientProvider(config: Config) {
             logger.error(it) { "Failed to set key '$key' with expiry ($ttlSeconds s)" }
         }.getOrDefault(false)
 
+    suspend fun getKeysByPattern(pattern: String): List<String> =
+        runCatching {
+            withConnection { it.keys(pattern).await() }
+        }.onFailure {
+            logger.error(it) { "Failed to get keys by pattern '$pattern'" }
+        }.getOrDefault(emptyList())
+
+    suspend fun getExpiry(key: String): Long? =
+        runCatching {
+            withConnection { it.ttl(key).await() }
+        }.onFailure {
+            logger.error(it) { "Failed to get expiry for key '$key'" }
+        }.getOrNull()
 }
