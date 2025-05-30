@@ -5,7 +5,7 @@ CREATE TABLE leveling_users
     userid     BIGINT  NOT NULL,
     xp         INTEGER NOT NULL DEFAULT 0,
     level      INTEGER NOT NULL DEFAULT 0,
-    pingactive BOOLEAN NOT NULL DEFAULT FALSE,
+    pingactive BOOLEAN NOT NULL DEFAULT TRUE,
     PRIMARY KEY (guildid, userid)
 );
 

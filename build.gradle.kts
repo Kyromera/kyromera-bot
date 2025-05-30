@@ -54,7 +54,7 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.18")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("org.postgresql:postgresql:42.7.5")
+    implementation("org.postgresql:postgresql:42.7.6")
     implementation("net.dv8tion:JDA:5.5.1")
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
     implementation("org.flywaydb:flyway-core:11.8.2")
@@ -63,7 +63,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("com.google.code.gson:gson:2.13.1")
-    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.0")
+    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.3")
 
     implementation("org.jetbrains.exposed:exposed-core:${exposedVersion}")
     implementation("org.jetbrains.exposed:exposed-crypt:${exposedVersion}")

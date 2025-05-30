@@ -26,6 +26,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import kotlin.math.pow
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -218,7 +219,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
                             logger.info { "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel. Message: $levelUpMessage" }
 
 
-                            KyromeraScope.launch {
+                            KyromeraScope.launch(Dispatchers.IO) {
                                 val lastChannelId = getLastMessageChannelInGuild(cachedXp.guildId)
                                 if (lastChannelId != null) {
                                     try {
@@ -302,11 +303,8 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
             }
         }
 
-        val newCachedXp = if (currentCachedXp != null) {
-            currentCachedXp.copy(xp = currentCachedXp.xp + baseXp, lastUpdated = System.currentTimeMillis())
-        } else {
-            CachedXp(guildId, userId, baseXp, System.currentTimeMillis())
-        }
+        val newCachedXp = currentCachedXp?.copy(xp = currentCachedXp.xp + baseXp, lastUpdated = System.currentTimeMillis())
+            ?: CachedXp(guildId, userId, baseXp, System.currentTimeMillis())
 
         redisClient.setTyped(cacheKey, newCachedXp, CachedXp.serializer())
 
@@ -315,6 +313,11 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
 
 
     suspend fun getXp(guildId: Long, userId: Long): XpPoints {
+        val preCacheKey = "xp:runtimecache:$guildId:$userId"
+        if (redisClient.get(preCacheKey) != null) {
+            logger.debug { "Using runtime cache for XP of user $userId in guild $guildId" }
+            return redisClient.get(preCacheKey)?.toIntOrNull() ?: 0
+        }
         val cacheKey = "xp:cache:$guildId:$userId"
         val cachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
@@ -341,11 +344,14 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
             }
         }
 
-        return if (cachedXp != null) {
+        val xp = if (cachedXp != null) {
             dbXp + cachedXp.xp
         } else {
             dbXp
         }
+        redisClient.setWithExpiry(preCacheKey, xp.toString(), 60.seconds.inWholeSeconds)
+        
+        return xp
     }
 
     suspend fun getLevel(guildId: Long, userId: Long): Level {
@@ -422,13 +428,13 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
         }
     }
 
-    suspend fun setLastMessageChannelInGuild(guildId: Long, channelId: Long) {
+    private suspend fun setLastMessageChannelInGuild(guildId: Long, channelId: Long) {
         val key = "guild:$guildId:lastMessageChannel"
-        redisClient.set(key, channelId.toString())
+        redisClient.setWithExpiry(key, channelId.toString(), 12.hours.inWholeSeconds)
         logger.debug { "Set last message channel for guild $guildId to $channelId" }
     }
 
-    suspend fun getLastMessageChannelInGuild(guildId: Long): Long? {
+    private suspend fun getLastMessageChannelInGuild(guildId: Long): Long? {
         val key = "guild:$guildId:lastMessageChannel"
         return redisClient.get(key)?.toLongOrNull()
     }
