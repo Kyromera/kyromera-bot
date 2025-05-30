@@ -301,13 +301,13 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
         }
     }
 
-    suspend fun setLastMessageChannelInGuild(guildId: Long, channelId: Long) {
+    private suspend fun setLastMessageChannelInGuild(guildId: Long, channelId: Long) {
         val key = "guild:$guildId:lastMessageChannel"
         redisClient.set(key, channelId.toString())
         logger.debug { "Set last message channel for guild $guildId to $channelId" }
     }
 
-    suspend fun getLastMessageChannelInGuild(guildId: Long): Long? {
+    private suspend fun getLastMessageChannelInGuild(guildId: Long): Long? {
         val key = "guild:$guildId:lastMessageChannel"
         return redisClient.get(key)?.toLongOrNull()
     }
