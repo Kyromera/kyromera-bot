@@ -31,7 +31,9 @@ class Bot(private val config: Config, private val databaseSource: DatabaseSource
         defaultIntents + GatewayIntent.GUILD_MEMBERS
 
 
-    override val cacheFlags: Set<CacheFlag> = emptySet()
+    override val cacheFlags: Set<CacheFlag> = setOf(
+        CacheFlag.VOICE_STATE
+    )
 
 
     override fun createJDA(event: BReadyEvent, eventManager: IEventManager) {

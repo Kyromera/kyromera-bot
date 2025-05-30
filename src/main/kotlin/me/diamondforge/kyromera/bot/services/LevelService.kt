@@ -1,5 +1,6 @@
 package me.diamondforge.kyromera.bot.services
 
+import dev.minn.jda.ktx.events.await
 import io.github.freya022.botcommands.api.core.BContext
 import io.github.freya022.botcommands.api.core.annotations.BEventListener
 import io.github.freya022.botcommands.api.core.service.annotations.BService
@@ -13,6 +14,10 @@ import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.JDA
+import net.dv8tion.jda.api.entities.Guild
+import net.dv8tion.jda.api.entities.Member
+import net.dv8tion.jda.api.entities.channel.concrete.VoiceChannel
+import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import okhttp3.Dispatcher
@@ -41,6 +46,7 @@ data class CachedXp(
 @BService
 class LevelService(private val redisClient: RedisClientProvider, private val databaseClient: DatabaseSource, private val context: BContext) {
     private val cacheFlushInterval = 1.minutes
+    private val voiceChannelCheckInterval = 1.minutes
 
     fun getLevelUpMessage(guildId: Long, userId: Long, xp: Int): String {
         val level = levelAtXp(xp)
@@ -52,18 +58,132 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
         KyromeraScope.launch(Dispatchers.IO) {
             startCacheFlushWorker()
         }
+
+        KyromeraScope.launch(Dispatchers.IO) {
+            startVoiceChannelMonitoringWorker()
+        }
     }
 
     private suspend fun startCacheFlushWorker() {
         logger.info { "Starting XP cache flush worker with interval: $cacheFlushInterval" }
+
+        // Outer loop to ensure the worker restarts if it fails
         while (true) {
             try {
-                flushCacheToDatabase()
-                delay(cacheFlushInterval)
+                // Inner loop for the actual work
+                while (true) {
+                    try {
+                        flushCacheToDatabase()
+                        delay(cacheFlushInterval)
+                    } catch (e: Exception) {
+                        logger.error(e) { "Error in XP cache flush worker, will retry after delay" }
+                        delay(10.seconds)
+                    }
+                }
             } catch (e: Exception) {
-                logger.error(e) { "Error in XP cache flush worker" }
-                delay(10.seconds)
+                logger.error(e) { "Critical error in XP cache flush worker, restarting worker" }
+                delay(30.seconds) // Longer delay before restarting the worker
             }
+        }
+    }
+
+    private suspend fun startVoiceChannelMonitoringWorker() {
+        logger.info { "Starting voice channel monitoring worker with interval: $voiceChannelCheckInterval" }
+        delay(30.seconds) // Initial delay to allow other services to start
+        // Ensure the JDA instance is ready
+        val jda = context.jda ?: throw IllegalStateException("JDA instance is not available")
+        jda.awaitReady()
+        logger.info { "JDA instance is ready, starting voice channel monitoring worker" }
+        // Outer loop to ensure the worker restarts if it fails
+        while (true) {
+            try {
+                // Inner loop for the actual work
+                while (true) {
+                    try {
+                        checkVoiceChannelsAndAwardXp()
+                        delay(voiceChannelCheckInterval)
+                    } catch (e: Exception) {
+                        logger.error(e) { "Error in voice channel monitoring worker, will retry after delay" }
+                        delay(10.seconds)
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Critical error in voice channel monitoring worker, restarting worker" }
+                delay(30.seconds) // Longer delay before restarting the worker
+            }
+        }
+    }
+
+    private suspend fun checkVoiceChannelsAndAwardXp() {
+        logger.debug { "Checking voice channels for XP awards" }
+
+        try {
+            val jda = context.jda
+            val guilds = jda.guilds
+
+            for (guild in guilds) {
+                try {
+                    val voiceChannels = guild.voiceChannels
+
+                    for (voiceChannel in voiceChannels) {
+                        logger.debug { "Processing voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name}. Member count: ${voiceChannel.members.size}" }
+                        try {
+                            val members = voiceChannel.members
+
+                            if (members.isEmpty()) {
+                                continue
+                            }
+
+                            val unmutedMembers = members.filter { it.voiceState?.isMuted == false && !it.user.isBot }
+                            if (unmutedMembers.size < 2) {
+                                logger.debug { "Skipping voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name} due to insufficient unmuted members" }
+                                continue
+                            }
+
+                            logger.trace { "Found ${members.size} members in voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name}" }
+
+                            for (member in members) {
+                                try {
+                                    if (member.user.isBot) {
+                                        continue
+                                    }
+
+                                    val voiceState = member.voiceState
+                                    if (voiceState?.isDeafened == true || voiceState?.isSelfDeafened == true) {
+                                        logger.debug { "Skipping deafened user ${member.id} in guild ${guild.id}" }
+                                        continue
+                                    }
+
+                                    if (guild.afkChannel != null && voiceChannel.id == guild.afkChannel?.id) {
+                                        logger.debug { "Skipping user ${member.id} in AFK channel in guild ${guild.id}" }
+                                        continue
+                                    }
+
+                                    val guildId = guild.idLong
+                                    val userId = member.idLong
+
+                                    val newXp = addXp(guildId, userId, XpRewardType.Voice)
+
+                                    if (newXp == null) {
+                                        logger.debug { "User $userId in guild $guildId is on cooldown for voice XP" }
+                                    } else {
+                                        val level = levelAtXp(newXp)
+                                        logger.debug { "Awarded voice XP to user $userId in guild $guildId. Total XP: $newXp, Level: $level" }
+                                    }
+                                } catch (e: Exception) {
+                                    logger.error(e) { "Error processing member ${member.id} in voice channel ${voiceChannel.id}" }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            logger.error(e) { "Error processing voice channel ${voiceChannel.id} in guild ${guild.id}" }
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Error processing guild ${guild.id}" }
+                }
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Error checking voice channels" }
         }
     }
 
@@ -154,6 +274,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
         redisClient.setWithExpiry(cooldownKey, "1", cooldown.inWholeSeconds)
 
         val baseXp = getBaseXp(type)
+        logger.trace { "Adding $baseXp XP for user $userId in guild $guildId for type ${type.name}" }
 
         val cacheKey = "xp:cache:$guildId:$userId"
         val currentCachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
