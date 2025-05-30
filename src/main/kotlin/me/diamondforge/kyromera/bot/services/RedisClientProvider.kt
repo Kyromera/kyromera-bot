@@ -82,6 +82,16 @@ class RedisClientProvider(config: Config) {
             .onFailure { logger.error(it) { "Failed to set key '$key'" } }
             .getOrDefault(false)
 
+    suspend fun increaseXp(key: String, increment: Long): Boolean =
+        runCatching { withConnection { it.incrby(key, increment).await() >= 0 } }
+            .onFailure { logger.error(it) { "Failed to increase XP for key '$key' by $increment" } }
+            .getOrDefault(false)
+
+    suspend fun decreaseXp(key: String, decrement: Long): Boolean =
+        runCatching { withConnection { it.decrby(key, decrement).await() >= 0 } }
+            .onFailure { logger.error(it) { "Failed to decrease XP for key '$key' by $decrement" } }
+            .getOrDefault(false)
+
     suspend fun setWithExpiry(key: String, value: String, ttlSeconds: Long): Boolean =
         runCatching { withConnection { it.setex(key, ttlSeconds, value).await() == "OK" } }
             .onFailure { logger.error(it) { "Failed to set key '$key' with expiry ($ttlSeconds s)" } }
