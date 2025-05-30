@@ -98,7 +98,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
                             logger.info { "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel. Message: $levelUpMessage" }
 
 
-                            KyromeraScope.launch {
+                            KyromeraScope.launch(Dispatchers.IO) {
                                 val lastChannelId = getLastMessageChannelInGuild(cachedXp.guildId)
                                 if (lastChannelId != null) {
                                     try {
