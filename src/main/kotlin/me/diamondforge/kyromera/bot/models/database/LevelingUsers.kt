@@ -1,6 +1,6 @@
 package me.diamondforge.kyromera.bot.models.database
 
-import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.Table
 
 object LevelingUsers : Table("leveling_users") {
     val guildId = long("guildid")

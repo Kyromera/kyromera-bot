@@ -7,16 +7,12 @@ import io.github.freya022.botcommands.api.core.service.annotations.BService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import me.diamondforge.kyromera.bot.configuration.Config
 import me.diamondforge.kyromera.bot.configuration.Environment
-import me.diamondforge.kyromera.bot.models.database.LevelingTimestamps
-import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import me.diamondforge.kyromera.bot.runtimeTests.database.testDatabaseConnectionPool
 import me.diamondforge.kyromera.bot.services.DatabaseSource
 import net.dv8tion.jda.api.OnlineStatus
 import net.dv8tion.jda.api.entities.Activity
 import net.dv8tion.jda.api.hooks.IEventManager
 import net.dv8tion.jda.api.requests.GatewayIntent
-import net.dv8tion.jda.api.sharding.DefaultShardManagerBuilder
-import net.dv8tion.jda.api.sharding.ShardManager
 import net.dv8tion.jda.api.utils.ChunkingFilter
 import net.dv8tion.jda.api.utils.MemberCachePolicy
 import net.dv8tion.jda.api.utils.cache.CacheFlag

@@ -1,29 +1,23 @@
 package me.diamondforge.kyromera.bot.services
 
-import dev.minn.jda.ktx.events.await
 import io.github.freya022.botcommands.api.core.BContext
-import io.github.freya022.botcommands.api.core.annotations.BEventListener
 import io.github.freya022.botcommands.api.core.service.annotations.BService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.serializer
 import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
-import net.dv8tion.jda.api.JDA
-import net.dv8tion.jda.api.entities.Guild
-import net.dv8tion.jda.api.entities.Member
-import net.dv8tion.jda.api.entities.channel.concrete.VoiceChannel
-import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
-import okhttp3.Dispatcher
-import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 import kotlin.math.pow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -45,7 +39,11 @@ data class CachedXp(
 )
 
 @BService
-class LevelService(private val redisClient: RedisClientProvider, private val databaseClient: DatabaseSource, private val context: BContext) {
+class LevelService(
+    private val redisClient: RedisClientProvider,
+    private val databaseClient: DatabaseSource,
+    private val context: BContext
+) {
     private val cacheFlushInterval = 1.minutes
     private val voiceChannelCheckInterval = 1.minutes
 
@@ -90,15 +88,11 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
 
     private suspend fun startVoiceChannelMonitoringWorker() {
         logger.info { "Starting voice channel monitoring worker with interval: $voiceChannelCheckInterval" }
-        delay(30.seconds) // Initial delay to allow other services to start
-        // Ensure the JDA instance is ready
-        val jda = context.jda ?: throw IllegalStateException("JDA instance is not available")
+        val jda = context.jda
         jda.awaitReady()
         logger.info { "JDA instance is ready, starting voice channel monitoring worker" }
-        // Outer loop to ensure the worker restarts if it fails
         while (true) {
             try {
-                // Inner loop for the actual work
                 while (true) {
                     try {
                         checkVoiceChannelsAndAwardXp()
@@ -110,7 +104,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
                 }
             } catch (e: Exception) {
                 logger.error(e) { "Critical error in voice channel monitoring worker, restarting worker" }
-                delay(30.seconds) // Longer delay before restarting the worker
+                delay(30.seconds)
             }
         }
     }
@@ -205,7 +199,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
                 transaction {
                     val existingUser = LevelingUsers.selectAll().where(
                         LevelingUsers.guildId eq cachedXp.guildId and
-                        (LevelingUsers.userId eq cachedXp.userId)
+                                (LevelingUsers.userId eq cachedXp.userId)
                     ).singleOrNull()
 
                     if (existingUser != null) {
@@ -236,9 +230,9 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
                             }
                         }
 
-                        LevelingUsers.update({ 
+                        LevelingUsers.update({
                             LevelingUsers.guildId eq cachedXp.guildId and
-                            (LevelingUsers.userId eq cachedXp.userId)
+                                    (LevelingUsers.userId eq cachedXp.userId)
                         }) {
                             it[xp] = updatedXp
                             it[level] = updatedLevel
@@ -284,7 +278,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
             try {
                 val result = LevelingUsers.selectAll().where(
                     LevelingUsers.guildId eq guildId and
-                    (LevelingUsers.userId eq userId)
+                            (LevelingUsers.userId eq userId)
                 ).singleOrNull()
 
                 if (result != null) {
@@ -303,8 +297,9 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
             }
         }
 
-        val newCachedXp = currentCachedXp?.copy(xp = currentCachedXp.xp + baseXp, lastUpdated = System.currentTimeMillis())
-            ?: CachedXp(guildId, userId, baseXp, System.currentTimeMillis())
+        val newCachedXp =
+            currentCachedXp?.copy(xp = currentCachedXp.xp + baseXp, lastUpdated = System.currentTimeMillis())
+                ?: CachedXp(guildId, userId, baseXp, System.currentTimeMillis())
 
         redisClient.setTyped(cacheKey, newCachedXp, CachedXp.serializer())
 
@@ -325,7 +320,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
             try {
                 val result = LevelingUsers.selectAll().where(
                     LevelingUsers.guildId eq guildId and
-                    (LevelingUsers.userId eq userId)
+                            (LevelingUsers.userId eq userId)
                 ).singleOrNull()
 
                 if (result != null) {
@@ -350,7 +345,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
             dbXp
         }
         redisClient.setWithExpiry(preCacheKey, xp.toString(), 60.seconds.inWholeSeconds)
-        
+
         return xp
     }
 
@@ -358,6 +353,7 @@ class LevelService(private val redisClient: RedisClientProvider, private val dat
         val totalXp = getXp(guildId, userId)
         return levelAtXp(totalXp)
     }
+
     fun getBaseXp(type: XpRewardType): Int = when (type) {
         XpRewardType.Message -> (15..25).random()
         XpRewardType.Voice -> (2..6).random()

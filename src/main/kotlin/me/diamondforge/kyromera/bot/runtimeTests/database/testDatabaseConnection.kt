@@ -109,7 +109,8 @@ fun testDatabaseConnectionPool() {
     logger.info { "Connection reuse: completed in ${reuseTime}ms" }
     logger.info { "Pool saturation: $saturationThreads threads in ${saturationTime}ms" }
 
-    val parallelEfficiency = if (avgSequentialTime > 0) (avgSequentialTime.toFloat() / avgParallelTime.toFloat()) else 0f
+    val parallelEfficiency =
+        if (avgSequentialTime > 0) (avgSequentialTime.toFloat() / avgParallelTime.toFloat()) else 0f
     logger.info { "Parallel efficiency factor: ${parallelEfficiency.toInt()}x (higher is better)" }
     logger.info { "=== TEST COMPLETED ===" }
 }
