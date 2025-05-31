@@ -8,11 +8,13 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import me.diamondforge.kyromera.bot.enums.XpRewardType
+import me.diamondforge.kyromera.bot.models.database.LevelingRoles
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.entities.Member
@@ -1398,5 +1400,15 @@ class LevelService(
         return result
     }
 
+    /**
+     * Retrieves a list of reward roles corresponding to a specific level for a given guild.
+     *
+     * @param guildId The unique identifier of the guild.
+     * @param level The level for which to fetch the reward roles.
+     * @return A list of reward roles that match the specified level in the guild.
+     */
+    suspend fun getRewardRoleForLevel(guildId: Long, level: Int): List<RewardRole> {
+        return getRewardRoles(guildId).filter { it.level == level }
+    }
 
 }
