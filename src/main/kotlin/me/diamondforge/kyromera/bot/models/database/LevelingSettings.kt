@@ -1,5 +1,6 @@
 package me.diamondforge.kyromera.bot.models.database
 
+import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import org.jetbrains.exposed.sql.Table
 
 object LevelingSettings : Table("leveling_settings") {
@@ -14,8 +15,8 @@ object LevelingSettings : Table("leveling_settings") {
     val retainRoles = bool("retain_roles").default(false)
     val lastRecalc = long("last_recalc").default(0)
     val whitelistMode = bool("whitelist_mode").default(false)
-    val levelupAnnounceMode = varchar("levelup_announce_mode", 16).default("current").check {
-        it inList listOf("disabled", "current", "dm", "custom")
+    val levelupAnnounceMode = varchar("levelup_announce_mode", 16).default(LevelUpAnnounceMode.CURRENT.value).check {
+        it inList LevelUpAnnounceMode.entries.map { mode -> mode.value }
     }
 
     override val primaryKey = PrimaryKey(guildId)
