@@ -1363,7 +1363,7 @@ class LevelService(
      * @param oldXp The user's previous XP total (defaults to 0)
      * @return The formatted level-up message with all tokens replaced
      */
-fun templateLevelUpMessage(
+    fun templateLevelUpMessage(
         template: String,
         user: User,
         member: Member,
