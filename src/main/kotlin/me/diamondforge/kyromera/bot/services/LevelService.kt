@@ -233,7 +233,7 @@ class LevelService(
                 redisClient.get(key) ?: return@forEach
                 val cachedXp = redisClient.getTyped(key, CachedXp.serializer()) ?: return@forEach
 
-                transaction {
+                newSuspendedTransaction {
                     val existingUser = LevelingUsers.selectAll().where(
                         LevelingUsers.guildId eq cachedXp.guildId and
                                 (LevelingUsers.userId eq cachedXp.userId)
@@ -323,7 +323,7 @@ class LevelService(
         val cacheKey = "xp:cache:$guildId:$userId"
         val currentCachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
-        val dbXp = transaction {
+        val dbXp = newSuspendedTransaction {
             try {
                 val result = LevelingUsers.selectAll().where(
                     LevelingUsers.guildId eq guildId and
@@ -365,7 +365,7 @@ class LevelService(
         val cacheKey = "xp:cache:$guildId:$userId"
         val cachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
-        val dbXp = transaction {
+        val dbXp = newSuspendedTransaction {
             try {
                 val result = LevelingUsers.selectAll().where(
                     LevelingUsers.guildId eq guildId and
@@ -519,7 +519,7 @@ class LevelService(
         }
 
         logger.debug { "No cached reward roles found for guild $guildId, querying database" }
-        val dbRoles = transaction {
+        val dbRoles = newSuspendedTransaction {
             LevelingUsers.selectAll()
                 .where(LevelingUsers.guildId eq guildId)
                 .map {
