@@ -7,8 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.XpRewardType
+import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
@@ -16,6 +18,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import kotlin.math.pow
@@ -38,6 +41,13 @@ data class CachedXp(
     val lastUpdated: Long = System.currentTimeMillis()
 )
 
+@Serializable
+data class RewardRole(
+    val guildId: Long,
+    val roleId: Long,
+    val level: Int
+)
+
 @BService
 class LevelService(
     private val redisClient: RedisClientProvider,
@@ -47,11 +57,31 @@ class LevelService(
     private val cacheFlushInterval = 1.minutes
     private val voiceChannelCheckInterval = 1.minutes
 
-    fun getLevelUpMessage(guildId: Long, userId: Long, xp: Int): String {
-        val level = levelAtXp(xp)
+    suspend fun getLevelUpMessage(guildId: Long): String {
+        val cacheKey = "levelup:message:$guildId"
+        val cachedMessage = redisClient.get(cacheKey)
 
-        return "Congratulations <@!$userId>! You have reached level $level."
+        if (cachedMessage != null) {
+            logger.debug { "Found cached level-up message for guild $guildId" }
+            return cachedMessage
+        }
+
+        logger.debug { "No cached level-up message found for guild $guildId, querying database" }
+        val dbMessage = newSuspendedTransaction {
+            LevelingSettings
+                .selectAll().where { LevelingSettings.guildId eq guildId }
+                .limit(1)
+                .map { it[LevelingSettings.levelupMessage] }
+                .firstOrNull()
+                ?: "Congratulations {user}! You just advanced to level {level}!"
+        }
+
+        redisClient.setWithExpiry(cacheKey, dbMessage, 4.hours.inWholeSeconds)
+        logger.debug { "Cached level-up message for guild $guildId" }
+
+        return dbMessage
     }
+
 
     init {
         KyromeraScope.launch(Dispatchers.IO) {
@@ -186,7 +216,7 @@ class LevelService(
         } catch (e: Exception) {
             logger.error(e) { "Error checking voice channels" }
         }
-        
+
     }
 
     private suspend fun flushCacheToDatabase() {
@@ -216,7 +246,19 @@ class LevelService(
                         val updatedLevel = levelAtXp(updatedXp)
 
                         if (updatedLevel > oldLevel) {
-                            val levelUpMessage = getLevelUpMessage(cachedXp.guildId, cachedXp.userId, updatedXp)
+                            // Get the message template first
+                            val messageTemplate = LevelingSettings.selectAll()
+                                .where { LevelingSettings.guildId eq cachedXp.guildId }
+                                .limit(1)
+                                .map { it[LevelingSettings.levelupMessage] }
+                                .firstOrNull()
+                                ?: "Congratulations {user}! You just advanced to level {level}!"
+
+                            // Format the message
+                            val levelUpMessage = messageTemplate
+                                .replace("{user}", "<@${cachedXp.userId}>")
+                                .replace("{level}", updatedLevel.toString())
+
                             logger.info { "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel. Message: $levelUpMessage" }
 
 
@@ -445,6 +487,7 @@ class LevelService(
 
     suspend fun handleMessageCreated(createEvent: MessageReceivedEvent) {
         if (createEvent.author.isBot) return
+        @Suppress("SENSELESS_COMPARISON")
         if (createEvent.guild == null) return
 
 
@@ -464,5 +507,70 @@ class LevelService(
         val level = levelAtXp(newXp)
         logger.debug { "User $userId in guild $guildId has $newXp XP and is at level $level" }
     }
+
+    suspend fun getRewardRoles(guildId: Long): List<RewardRole> {
+        val serializer = ListSerializer(RewardRole.serializer())
+        val cacheKey = "rewardroles:$guildId"
+        val cachedRoles = redisClient.getTyped(cacheKey, serializer)
+
+        if (cachedRoles != null) {
+            logger.debug { "Found cached reward roles for guild $guildId" }
+            return cachedRoles
+        }
+
+        logger.debug { "No cached reward roles found for guild $guildId, querying database" }
+        val dbRoles = transaction {
+            LevelingUsers.selectAll()
+                .where(LevelingUsers.guildId eq guildId)
+                .map {
+                    RewardRole(
+                        guildId = it[LevelingUsers.guildId],
+                        roleId = it[LevelingUsers.userId],
+                        level = it[LevelingUsers.level]
+                    )
+                }
+        }
+
+        if (dbRoles.isEmpty()) {
+            logger.debug { "No reward roles found in database for guild $guildId" }
+            return emptyList()
+        }
+
+        redisClient.setTypedWithExpiry(cacheKey, dbRoles, 60.minutes.inWholeSeconds, serializer)
+        logger.debug { "Cached ${dbRoles.size} reward roles for guild $guildId" }
+        return dbRoles
+    }
+    
+    // cached
+    suspend fun getPingEnabled(guildId: Long, userId: Long): Boolean {
+        val cacheKey = "leveling:ping:$guildId:$userId"
+        val cachedPing = redisClient.get(cacheKey)?.toBoolean()
+        if (cachedPing != null) {
+            logger.debug { "Found cached ping setting for user $userId in guild $guildId: $cachedPing" }
+            return cachedPing
+        }
+        logger.debug { "No cached ping setting found for user $userId in guild $guildId, querying database" }
+        val dbPing = newSuspendedTransaction {
+            LevelingUsers.selectAll()
+                .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
+                .map { it[LevelingUsers.pingActive] }
+                .firstOrNull() ?: false
+        }
+        redisClient.setWithExpiry(cacheKey, dbPing.toString(), 4.hours.inWholeSeconds)
+        logger.debug { "Cached ping setting for user $userId in guild $guildId: $dbPing" }
+        return dbPing
+    }
+
+    suspend fun sendLevelUpMessageAndReward(userId: Long, guildId: Long, level: Int, channel: MessageChannel) {
+        val baseMessage = getLevelUpMessage(guildId)
+        val pingEnabled = newSuspendedTransaction {
+            LevelingUsers.selectAll()
+                .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
+                .map { it[LevelingUsers.pingActive] }
+                .firstOrNull() ?: false
+        }
+
+    }
+
 
 }
