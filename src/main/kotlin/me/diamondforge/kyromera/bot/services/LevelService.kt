@@ -1,6 +1,8 @@
 package me.diamondforge.kyromera.bot.services
 
 import io.github.freya022.botcommands.api.core.BContext
+import io.github.freya022.botcommands.api.core.annotations.BEventListener
+import io.github.freya022.botcommands.api.core.events.InjectedJDAEvent
 import io.github.freya022.botcommands.api.core.service.annotations.BService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
@@ -83,7 +85,9 @@ class LevelService(
     }
 
 
-    init {
+    @BEventListener
+    suspend fun onInjectedJDA(event: InjectedJDAEvent) {
+        logger.info { "JDA instance is ready, starting workers" }
         KyromeraScope.launch(Dispatchers.IO) {
             startCacheFlushWorker()
         }
@@ -118,9 +122,6 @@ class LevelService(
 
     private suspend fun startVoiceChannelMonitoringWorker() {
         logger.info { "Starting voice channel monitoring worker with interval: $voiceChannelCheckInterval" }
-        val jda = context.jda
-        jda.awaitReady()
-        logger.info { "JDA instance is ready, starting voice channel monitoring worker" }
         while (true) {
             try {
                 while (true) {
