@@ -1,7 +1,9 @@
 package me.diamondforge.kyromera.bot.services
 
+import dev.minn.jda.ktx.messages.MessageCreate
 import io.github.freya022.botcommands.api.core.BContext
 import io.github.freya022.botcommands.api.core.service.annotations.BService
+import io.github.freya022.botcommands.api.core.utils.enumSetOf
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -12,6 +14,10 @@ import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
+import net.dv8tion.jda.api.entities.Member
+import net.dv8tion.jda.api.entities.Message.MentionType
+import net.dv8tion.jda.api.entities.Role
+import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -21,6 +27,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
+import java.util.*
 import kotlin.math.pow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -73,11 +80,36 @@ class LevelService(
                 .limit(1)
                 .map { it[LevelingSettings.levelupMessage] }
                 .firstOrNull()
-                ?: "Congratulations {user}! You just advanced to level {level}!"
+                ?: "Congratulations {mention}! You just advanced to level {level}!"
         }
 
         redisClient.setWithExpiry(cacheKey, dbMessage, 4.hours.inWholeSeconds)
         logger.debug { "Cached level-up message for guild $guildId" }
+
+        return dbMessage
+    }
+
+    suspend fun getLevelUpMessageReward(guildId: Long): String {
+        val cacheKey = "levelup:message:reward:$guildId"
+        val cachedMessage = redisClient.get(cacheKey)
+
+        if (cachedMessage != null) {
+            logger.debug { "Found cached level-up reward message for guild $guildId" }
+            return cachedMessage
+        }
+
+        logger.debug { "No cached level-up reward message found for guild $guildId, querying database" }
+        val dbMessage = newSuspendedTransaction {
+            LevelingSettings
+                .selectAll().where { LevelingSettings.guildId eq guildId }
+                .limit(1)
+                .map { it[LevelingSettings.levelupMessageReward] }
+                .firstOrNull()
+                ?: "Congratulations {mention}! You just advanced to level {level} and earned the {reward_names} role!"
+        }
+
+        redisClient.setWithExpiry(cacheKey, dbMessage, 4.hours.inWholeSeconds)
+        logger.debug { "Cached level-up reward message for guild $guildId" }
 
         return dbMessage
     }
@@ -220,7 +252,7 @@ class LevelService(
     }
 
     private suspend fun flushCacheToDatabase() {
-        val cacheKeys = redisClient.getKeysByPattern("xp:cache:*")
+        val cacheKeys = redisClient.getKeysByPattern("xp:pending:*")
 
         if (cacheKeys.isEmpty()) {
             return
@@ -246,21 +278,7 @@ class LevelService(
                         val updatedLevel = levelAtXp(updatedXp)
 
                         if (updatedLevel > oldLevel) {
-                            // Get the message template first
-                            val messageTemplate = LevelingSettings.selectAll()
-                                .where { LevelingSettings.guildId eq cachedXp.guildId }
-                                .limit(1)
-                                .map { it[LevelingSettings.levelupMessage] }
-                                .firstOrNull()
-                                ?: "Congratulations {user}! You just advanced to level {level}!"
-
-                            // Format the message
-                            val levelUpMessage = messageTemplate
-                                .replace("{user}", "<@${cachedXp.userId}>")
-                                .replace("{level}", updatedLevel.toString())
-
-                            logger.info { "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel. Message: $levelUpMessage" }
-
+                            logger.info { "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel." }
 
                             KyromeraScope.launch(Dispatchers.IO) {
                                 val lastChannelId = getLastMessageChannelInGuild(cachedXp.guildId)
@@ -268,8 +286,18 @@ class LevelService(
                                     try {
                                         val jda = context.jda
                                         val channel = jda.getChannelById(MessageChannel::class.java, lastChannelId)
-                                        channel?.sendMessage(levelUpMessage)?.queue()
-                                        logger.debug { "Sent level-up message to channel $lastChannelId in guild ${cachedXp.guildId}" }
+                                        if (channel != null) {
+                                            sendLevelUpMessageAndReward(
+                                                userId = cachedXp.userId,
+                                                guildId = cachedXp.guildId,
+                                                level = updatedLevel,
+                                                oldLevel = oldLevel,
+                                                xp = updatedXp,
+                                                channel = channel,
+                                                oldXp = existingXp
+                                            )
+                                            logger.debug { "Sent level-up message to channel $lastChannelId in guild ${cachedXp.guildId}" }
+                                        }
                                     } catch (e: Exception) {
                                         logger.error(e) { "Failed to send level-up message to channel $lastChannelId in guild ${cachedXp.guildId}" }
                                     }
@@ -320,7 +348,7 @@ class LevelService(
         val baseXp = getBaseXp(type)
         logger.trace { "Adding $baseXp XP for user $userId in guild $guildId for type ${type.name}" }
 
-        val cacheKey = "xp:cache:$guildId:$userId"
+        val cacheKey = "xp:pending:$guildId:$userId"
         val currentCachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
         val dbXp = newSuspendedTransaction {
@@ -362,7 +390,7 @@ class LevelService(
             logger.debug { "Using runtime cache for XP of user $userId in guild $guildId" }
             return redisClient.get(preCacheKey)?.toIntOrNull() ?: 0
         }
-        val cacheKey = "xp:cache:$guildId:$userId"
+        val cacheKey = "xp:pending:$guildId:$userId"
         val cachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
         val dbXp = newSuspendedTransaction {
@@ -540,7 +568,7 @@ class LevelService(
         logger.debug { "Cached ${dbRoles.size} reward roles for guild $guildId" }
         return dbRoles
     }
-    
+
     // cached
     suspend fun getPingEnabled(guildId: Long, userId: Long): Boolean {
         val cacheKey = "leveling:ping:$guildId:$userId"
@@ -561,8 +589,7 @@ class LevelService(
         return dbPing
     }
 
-    suspend fun sendLevelUpMessageAndReward(userId: Long, guildId: Long, level: Int, channel: MessageChannel) {
-        val baseMessage = getLevelUpMessage(guildId)
+    private suspend fun sendLevelUpMessageAndReward(userId: Long, guildId: Long, level: Int, oldLevel: Int, xp: Int, channel: MessageChannel, oldXp: Int = 0) {
         val pingEnabled = newSuspendedTransaction {
             LevelingUsers.selectAll()
                 .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
@@ -570,6 +597,104 @@ class LevelService(
                 .firstOrNull() ?: false
         }
 
+        val jda = context.jda
+        val guild = jda.getGuildById(guildId) ?: return
+        val user = jda.getUserById(userId) ?: return
+        val member = guild.getMember(user) ?: return
+
+        val rewardRoles = if (level > oldLevel) {
+            getRewardRoles(guildId).filter { it.level == level }
+        } else {
+            emptyList()
+        }
+
+        val rewardRoleObjects = rewardRoles.mapNotNull { guild.getRoleById(it.roleId) }
+
+        val baseMessage = if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
+            getLevelUpMessageReward(guildId)
+        } else {
+            getLevelUpMessage(guildId)
+        }
+
+        val templatedMessage = templateLevelUpMessage(
+            baseMessage,
+            user,
+            member,
+            level,
+            oldLevel,
+            xp,
+            rewardRoleObjects,
+            oldXp
+        )
+
+        val message = MessageCreate {
+            content = templatedMessage
+            allowedMentionTypes = if (pingEnabled) {
+                EnumSet.of(MentionType.USER, MentionType.ROLE)
+            } else {
+                EnumSet.noneOf(MentionType::class.java)
+                enumSetOf(MentionType.ROLE)
+            }
+        }
+
+        channel.sendMessage(message).queue()
+
+        if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
+            rewardRoleObjects.forEach { role ->
+                guild.addRoleToMember(member, role).queue()
+            }
+        }
+    }
+
+    /**
+     * Generates a level-up message by replacing tokens in the provided template with actual values.
+     *
+     * Supported tokens:
+     * {name} - The user's full tag, including their discriminator (e.g., user#1234)
+     * {nick} - The nickname of the user in the guild, or their username if no nickname exists
+     * {mention} - A mention of the user that pings them in the guild
+     * {level} - The new level that the user has reached
+     * {old_level} - The user's previous level before leveling up
+     * {xp} - The user's updated XP total after leveling up
+     * {old_xp} - The user's XP total before leveling up
+     *
+     * Additional tokens for role rewards:
+     * {reward_names} - A comma-separated list of the names of the roles awarded
+     * {reward_mentions} - A mention of the awarded roles (directly pings these roles in the guild)
+     */
+    fun templateLevelUpMessage(
+        template: String,
+        user: User,
+        member: Member,
+        level: Int,
+        oldLevel: Int,
+        xp: Int,
+        rewardRoles: List<Role> = emptyList(),
+        oldXp: Int = 0
+    ): String {
+        var result = template
+
+        result = result.replace("{name}", user.asTag)
+        result = result.replace("{nick}", member.effectiveName)
+        result = result.replace("{mention}", user.asMention)
+
+        result = result.replace("{level}", level.toString())
+        result = result.replace("{old_level}", oldLevel.toString())
+        result = result.replace("{xp}", xp.toString())
+        result = result.replace("{old_xp}", oldXp.toString())
+
+        if (rewardRoles.isNotEmpty()) {
+            val rewardNames = rewardRoles.joinToString(", ") { it.name }
+            val rewardMentions = rewardRoles.joinToString(" ") { it.asMention }
+
+            result = result.replace("{reward_names}", rewardNames)
+            result = result.replace("{reward_mentions}", rewardMentions)
+        } else {
+            result = result.replace("{reward_names}", "")
+            result = result.replace("{reward_mentions}", "")
+        }
+
+        return result
     }
 
 
