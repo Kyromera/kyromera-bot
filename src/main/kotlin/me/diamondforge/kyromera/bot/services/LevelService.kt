@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import me.diamondforge.kyromera.bot.KyromeraScope
+import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
@@ -25,7 +26,6 @@ import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.util.*
 import kotlin.math.pow
@@ -135,6 +135,75 @@ class LevelService(
         logger.debug { "Cached level-up reward message for guild $guildId" }
 
         return dbMessage
+    }
+
+    /**
+     * Retrieves the level-up announcement mode for a specific guild.
+     * 
+     * This method first checks the Redis cache for the announcement mode. If not found,
+     * it queries the database for the guild's custom level-up announcement mode.
+     * If no custom mode is found, it returns the default mode (CURRENT).
+     * The retrieved mode is then cached for future use.
+     *
+     * @param guildId The ID of the guild to get the level-up announcement mode for
+     * @return The LevelUpAnnounceMode enum value for the specified guild
+     */
+    suspend fun getLevelUpAnnounceMode(guildId: Long): LevelUpAnnounceMode {
+        val cacheKey = "levelup:announce:mode:$guildId"
+        val cachedMode = redisClient.get(cacheKey)
+
+        if (cachedMode != null) {
+            logger.debug { "Found cached level-up announce mode for guild $guildId: $cachedMode" }
+            return LevelUpAnnounceMode.fromString(cachedMode)
+        }
+
+        logger.debug { "No cached level-up announce mode found for guild $guildId, querying database" }
+        val dbMode = newSuspendedTransaction {
+            LevelingSettings
+                .selectAll().where { LevelingSettings.guildId eq guildId }
+                .limit(1)
+                .map { it[LevelingSettings.levelupAnnounceMode] }
+                .firstOrNull()
+                ?: LevelUpAnnounceMode.CURRENT.value
+        }
+
+        redisClient.setWithExpiry(cacheKey, dbMode, 4.hours.inWholeSeconds)
+        logger.debug { "Cached level-up announce mode for guild $guildId: $dbMode" }
+
+        return LevelUpAnnounceMode.fromString(dbMode)
+    }
+
+    /**
+     * Sets the level-up announcement mode for a specific guild.
+     * 
+     * This method updates the database with the new announcement mode and
+     * updates the cache to reflect the change.
+     *
+     * @param guildId The ID of the guild to set the level-up announcement mode for
+     * @param mode The LevelUpAnnounceMode enum value to set
+     */
+    suspend fun setLevelUpAnnounceMode(guildId: Long, mode: LevelUpAnnounceMode) {
+        val cacheKey = "levelup:announce:mode:$guildId"
+
+        newSuspendedTransaction {
+            val exists = LevelingSettings
+                .selectAll().where { LevelingSettings.guildId eq guildId }
+                .count() > 0
+
+            if (exists) {
+                LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
+                    it[levelupAnnounceMode] = mode.value
+                }
+            } else {
+                LevelingSettings.insert {
+                    it[LevelingSettings.guildId] = guildId
+                    it[levelupAnnounceMode] = mode.value
+                }
+            }
+        }
+
+        redisClient.setWithExpiry(cacheKey, mode.value, 4.hours.inWholeSeconds)
+        logger.debug { "Updated level-up announce mode for guild $guildId to ${mode.value}" }
     }
 
 
@@ -841,6 +910,14 @@ class LevelService(
      * @param oldXp The user's previous XP total (defaults to 0)
      */
     private suspend fun sendLevelUpMessageAndReward(userId: Long, guildId: Long, level: Int, oldLevel: Int, xp: Int, channel: MessageChannel, oldXp: Int = 0) {
+        val announceMode = getLevelUpAnnounceMode(guildId)
+
+        if (!announceMode.isEnabled()) {
+            logger.debug { "Level-up announcements are disabled for guild $guildId" }
+            assignRewardRoles(userId, guildId, level, oldLevel)
+            return
+        }
+
         val pingEnabled = newSuspendedTransaction {
             LevelingUsers.selectAll()
                 .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
@@ -888,11 +965,97 @@ class LevelService(
             }
         }
 
-        channel.sendMessage(message).queue()
+        when {
+            announceMode.isDM() -> {
+                try {
+                    user.openPrivateChannel().queue { privateChannel ->
+                        privateChannel.sendMessage(message).queue(
+                            { logger.debug { "Sent level-up DM to user $userId in guild $guildId" } },
+                            { e -> logger.error(e) { "Failed to send level-up DM to user $userId in guild $guildId" } }
+                        )
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to open private channel for user $userId in guild $guildId" }
+                }
+            }
+            announceMode.isCustomChannel() -> {
+                val customChannelId = newSuspendedTransaction {
+                    LevelingSettings
+                        .selectAll().where { LevelingSettings.guildId eq guildId }
+                        .limit(1)
+                        .map { it[LevelingSettings.levelupChannel] }
+                        .firstOrNull()
+                }
 
+                if (customChannelId != null) {
+                    try {
+                        val customChannel = jda.getChannelById(MessageChannel::class.java, customChannelId)
+                        if (customChannel != null) {
+                            customChannel.sendMessage(message).queue(
+                                { logger.debug { "Sent level-up message to custom channel $customChannelId in guild $guildId" } },
+                                { e -> logger.error(e) { "Failed to send level-up message to custom channel $customChannelId in guild $guildId" } }
+                            )
+                        } else {
+                            logger.warn { "Custom channel $customChannelId not found in guild $guildId, falling back to no message" }
+                            return
+                        }
+                    } catch (e: Exception) {
+                        logger.error(e) { "Error sending to custom channel $customChannelId in guild $guildId, falling back to no message" }
+                        return
+                    }
+                } else {
+                    logger.warn { "No custom channel configured for guild $guildId, falling back to current channel" }
+                    channel.sendMessage(message).queue()
+                }
+            }
+            announceMode.isCurrentChannel() -> {
+                channel.sendMessage(message).queue(
+                    { logger.debug { "Sent level-up message to current channel in guild $guildId" } },
+                    { e -> logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" } }
+                )
+            }
+            else -> {
+                logger.warn { "Unknown announce mode for guild $guildId, not sending level-up message" }
+            }
+        }
+        
         if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
             rewardRoleObjects.forEach { role ->
                 guild.addRoleToMember(member, role).queue()
+            }
+        }
+    }
+
+    /**
+     * Assigns reward roles to a user who has leveled up.
+     * 
+     * This helper method handles the role assignment logic separately from message sending,
+     * allowing roles to be assigned even when level-up announcements are disabled.
+     *
+     * @param userId The ID of the user who leveled up
+     * @param guildId The ID of the guild where the level-up occurred
+     * @param level The user's new level
+     * @param oldLevel The user's previous level
+     */
+    private suspend fun assignRewardRoles(userId: Long, guildId: Long, level: Int, oldLevel: Int) {
+        if (level <= oldLevel) {
+            return
+        }
+
+        val jda = context.jda
+        val guild = jda.getGuildById(guildId) ?: return
+        val user = jda.getUserById(userId) ?: return
+        val member = guild.getMember(user) ?: return
+
+        val rewardRoles = getRewardRoles(guildId).filter { it.level == level }
+        val rewardRoleObjects = rewardRoles.mapNotNull { guild.getRoleById(it.roleId) }
+
+        if (rewardRoleObjects.isNotEmpty()) {
+            rewardRoleObjects.forEach { role ->
+                guild.addRoleToMember(member, role).queue(
+                    { logger.debug { "Assigned role ${role.name} to user $userId in guild $guildId" } },
+                    { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } }
+                )
             }
         }
     }
