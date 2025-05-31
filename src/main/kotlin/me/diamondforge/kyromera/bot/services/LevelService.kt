@@ -1103,6 +1103,142 @@ class LevelService(
     }
 
     /**
+     * Drops all caches for a specific guild.
+     *
+     * This method clears all Redis caches related to the specified guild, including:
+     * - Level-up message templates
+     * - Level-up announcement mode
+     * - Reward roles
+     * - Last message channel
+     *
+     * This should be called whenever guild settings are changed to ensure the bot
+     * uses the updated settings.
+     *
+     * @param guildId The ID of the guild to drop caches for
+     */
+    suspend fun dropGuildCaches(guildId: Long) {
+        logger.info { "Dropping all caches for guild $guildId" }
+
+        // Drop level-up message caches
+        dropLevelUpMessageCache(guildId)
+        dropLevelUpRewardMessageCache(guildId)
+
+        // Drop announcement mode cache
+        dropLevelUpAnnounceModeCache(guildId)
+
+        // Drop reward roles cache
+        dropRewardRolesCache(guildId)
+
+        // Drop last message channel cache
+        dropLastMessageChannelCache(guildId)
+
+        logger.info { "Successfully dropped all caches for guild $guildId" }
+    }
+
+    /**
+     * Drops the level-up message template cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropLevelUpMessageCache(guildId: Long) {
+        val cacheKey = "levelup:message:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped level-up message cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the level-up reward message template cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropLevelUpRewardMessageCache(guildId: Long) {
+        val cacheKey = "levelup:message:reward:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped level-up reward message cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the level-up announcement mode cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropLevelUpAnnounceModeCache(guildId: Long) {
+        val cacheKey = "levelup:announce:mode:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped level-up announce mode cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the reward roles cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropRewardRolesCache(guildId: Long) {
+        val cacheKey = "rewardroles:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped reward roles cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the last message channel cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropLastMessageChannelCache(guildId: Long) {
+        val cacheKey = "guild:$guildId:lastMessageChannel"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped last message channel cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the ping enabled cache for a specific user in a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param userId The ID of the user
+     */
+    suspend fun dropPingEnabledCache(guildId: Long, userId: Long) {
+        val cacheKey = "leveling:ping:$guildId:$userId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped ping enabled cache for user $userId in guild $guildId" }
+    }
+
+    /**
+     * Drops the XP runtime cache for a specific user in a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param userId The ID of the user
+     */
+    suspend fun dropXpRuntimeCache(guildId: Long, userId: Long) {
+        val cacheKey = "xp:runtimecache:$guildId:$userId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped XP runtime cache for user $userId in guild $guildId" }
+    }
+
+    /**
+     * Drops all user-specific caches for a user in a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param userId The ID of the user
+     */
+    suspend fun dropUserCaches(guildId: Long, userId: Long) {
+        logger.info { "Dropping all caches for user $userId in guild $guildId" }
+
+        // Drop ping enabled cache
+        dropPingEnabledCache(guildId, userId)
+
+        // Drop XP runtime cache
+        dropXpRuntimeCache(guildId, userId)
+
+        // Drop XP cooldown caches
+        val cooldownKeyPattern = "xp:cooldown:$guildId:$userId:*"
+        val cooldownKeys = redisClient.getKeysByPattern(cooldownKeyPattern)
+        cooldownKeys.forEach { redisClient.delete(it) }
+        logger.debug { "Dropped ${cooldownKeys.size} XP cooldown caches for user $userId in guild $guildId" }
+
+        logger.info { "Successfully dropped all caches for user $userId in guild $guildId" }
+    }
+
+    /**
      * Assigns reward roles to a user who has leveled up.
      * 
      * This helper method handles the role assignment logic separately from message sending,
