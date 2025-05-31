@@ -910,119 +910,195 @@ class LevelService(
      * @param oldXp The user's previous XP total (defaults to 0)
      */
     private suspend fun sendLevelUpMessageAndReward(userId: Long, guildId: Long, level: Int, oldLevel: Int, xp: Int, channel: MessageChannel, oldXp: Int = 0) {
-        val announceMode = getLevelUpAnnounceMode(guildId)
+        try {
+            val announceMode = getLevelUpAnnounceMode(guildId)
 
-        if (!announceMode.isEnabled()) {
-            logger.debug { "Level-up announcements are disabled for guild $guildId" }
-            assignRewardRoles(userId, guildId, level, oldLevel)
-            return
-        }
-
-        val pingEnabled = newSuspendedTransaction {
-            LevelingUsers.selectAll()
-                .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
-                .map { it[LevelingUsers.pingActive] }
-                .firstOrNull() ?: false
-        }
-
-        val jda = context.jda
-        val guild = jda.getGuildById(guildId) ?: return
-        val user = jda.getUserById(userId) ?: return
-        val member = guild.getMember(user) ?: return
-
-        val rewardRoles = if (level > oldLevel) {
-            getRewardRoles(guildId).filter { it.level == level }
-        } else {
-            emptyList()
-        }
-
-        val rewardRoleObjects = rewardRoles.mapNotNull { guild.getRoleById(it.roleId) }
-
-        val baseMessage = if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
-            getLevelUpMessageReward(guildId)
-        } else {
-            getLevelUpMessage(guildId)
-        }
-
-        val templatedMessage = templateLevelUpMessage(
-            baseMessage,
-            user,
-            member,
-            level,
-            oldLevel,
-            xp,
-            rewardRoleObjects,
-            oldXp
-        )
-
-        val message = MessageCreate {
-            content = templatedMessage
-            allowedMentionTypes = if (pingEnabled) {
-                EnumSet.of(MentionType.USER, MentionType.ROLE)
-            } else {
-                EnumSet.noneOf(MentionType::class.java)
-                enumSetOf(MentionType.ROLE)
+            if (!announceMode.isEnabled()) {
+                logger.debug { "Level-up announcements are disabled for guild $guildId" }
+                assignRewardRoles(userId, guildId, level, oldLevel)
+                return
             }
-        }
 
-        when {
-            announceMode.isDM() -> {
-                try {
-                    user.openPrivateChannel().queue { privateChannel ->
-                        privateChannel.sendMessage(message).queue(
-                            { logger.debug { "Sent level-up DM to user $userId in guild $guildId" } },
-                            { e -> logger.error(e) { "Failed to send level-up DM to user $userId in guild $guildId" } }
-                        )
-                    }
-                } catch (e: Exception) {
-                    logger.error(e) { "Failed to open private channel for user $userId in guild $guildId" }
+            val pingEnabled = try {
+                newSuspendedTransaction {
+                    LevelingUsers.selectAll()
+                        .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
+                        .map { it[LevelingUsers.pingActive] }
+                        .firstOrNull() ?: false
                 }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get ping setting for user $userId in guild $guildId, defaulting to false" }
+                false
             }
-            announceMode.isCustomChannel() -> {
-                val customChannelId = newSuspendedTransaction {
-                    LevelingSettings
-                        .selectAll().where { LevelingSettings.guildId eq guildId }
-                        .limit(1)
-                        .map { it[LevelingSettings.levelupChannel] }
-                        .firstOrNull()
-                }
 
-                if (customChannelId != null) {
+            val jda = context.jda
+            val guild = try {
+                jda.getGuildById(guildId) ?: run {
+                    logger.error { "Failed to get guild $guildId, guild not found" }
+                    return
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get guild $guildId due to exception" }
+                return
+            }
+
+            val user = try {
+                jda.getUserById(userId) ?: run {
+                    logger.error { "Failed to get user $userId, user not found" }
+                    return
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get user $userId due to exception" }
+                return
+            }
+
+            val member = try {
+                guild.getMember(user) ?: run {
+                    logger.error { "Failed to get member for user $userId in guild $guildId, member not found" }
+                    return
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get member for user $userId in guild $guildId due to exception" }
+                return
+            }
+
+            val rewardRoles = try {
+                if (level > oldLevel) {
+                    getRewardRoles(guildId).filter { it.level == level }
+                } else {
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get reward roles for guild $guildId, defaulting to empty list" }
+                emptyList()
+            }
+
+            val rewardRoleObjects = try {
+                rewardRoles.mapNotNull { 
                     try {
-                        val customChannel = jda.getChannelById(MessageChannel::class.java, customChannelId)
-                        if (customChannel != null) {
-                            customChannel.sendMessage(message).queue(
-                                { logger.debug { "Sent level-up message to custom channel $customChannelId in guild $guildId" } },
-                                { e -> logger.error(e) { "Failed to send level-up message to custom channel $customChannelId in guild $guildId" } }
+                        guild.getRoleById(it.roleId)
+                    } catch (e: Exception) {
+                        logger.error(e) { "Failed to get role ${it.roleId} in guild $guildId" }
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to map reward roles to role objects for guild $guildId" }
+                emptyList()
+            }
+
+            val baseMessage = try {
+                if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
+                    getLevelUpMessageReward(guildId)
+                } else {
+                    getLevelUpMessage(guildId)
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get level-up message for guild $guildId, using default message" }
+                "Congratulations {mention}! You just advanced to level {level}!"
+            }
+
+            val templatedMessage = try {
+                templateLevelUpMessage(
+                    baseMessage,
+                    user,
+                    member,
+                    level,
+                    oldLevel,
+                    xp,
+                    rewardRoleObjects,
+                    oldXp
+                )
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to template level-up message for user $userId in guild $guildId, using simple message" }
+                "Congratulations ${user.asMention}! You just advanced to level $level!"
+            }
+
+            val message = MessageCreate {
+                content = templatedMessage
+                allowedMentionTypes = if (pingEnabled) {
+                    EnumSet.of(MentionType.USER, MentionType.ROLE)
+                } else {
+                    enumSetOf(MentionType.ROLE)
+                }
+            }
+
+            when {
+                announceMode.isDM() -> {
+                    try {
+                        user.openPrivateChannel().queue({ privateChannel ->
+                            privateChannel.sendMessage(message).queue(
+                                { logger.debug { "Sent level-up DM to user $userId in guild $guildId" } },
+                                { e -> logger.error(e) { "Failed to send level-up DM to user $userId in guild $guildId" } }
                             )
-                        } else {
-                            logger.warn { "Custom channel $customChannelId not found in guild $guildId, falling back to no message" }
-                            return
+                        }, { e ->
+                            logger.error(e) { "Failed to open private channel for user $userId in guild $guildId" }
+                        })
+                    } catch (e: Exception) {
+                        logger.error(e) { "Failed to open private channel for user $userId in guild $guildId" }
+                    }
+                }
+                announceMode.isCustomChannel() -> {
+                    val customChannelId = try {
+                        newSuspendedTransaction {
+                            LevelingSettings
+                                .selectAll().where { LevelingSettings.guildId eq guildId }
+                                .limit(1)
+                                .map { it[LevelingSettings.levelupChannel] }
+                                .firstOrNull()
                         }
                     } catch (e: Exception) {
-                        logger.error(e) { "Error sending to custom channel $customChannelId in guild $guildId, falling back to no message" }
-                        return
+                        logger.error(e) { "Failed to get custom channel ID for guild $guildId, no level-up message will be sent" }
+                        null
                     }
-                } else {
-                    logger.warn { "No custom channel configured for guild $guildId, falling back to current channel" }
-                    channel.sendMessage(message).queue()
+
+                    if (customChannelId != null) {
+                        try {
+                            val customChannel = jda.getChannelById(MessageChannel::class.java, customChannelId)
+                            if (customChannel != null) {
+                                customChannel.sendMessage(message).queue(
+                                    { logger.debug { "Sent level-up message to custom channel $customChannelId in guild $guildId" } },
+                                    { e -> logger.error(e) { "Failed to send level-up message to custom channel $customChannelId in guild $guildId, no message will be sent" } }
+                                )
+                            } else {
+                                logger.warn { "Custom channel $customChannelId not found in guild $guildId, no level-up message will be sent" }
+                            }
+                        } catch (e: Exception) {
+                            logger.error(e) { "Error sending to custom channel $customChannelId in guild $guildId, no level-up message will be sent" }
+                        }
+                    } else {
+                        logger.warn { "No custom channel configured for guild $guildId, no level-up message will be sent" }
+                    }
+                }
+                announceMode.isCurrentChannel() -> {
+                    try {
+                        channel.sendMessage(message).queue(
+                            { logger.debug { "Sent level-up message to current channel in guild $guildId" } },
+                            { e -> logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" } }
+                        )
+                    } catch (e: Exception) {
+                        logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" }
+                    }
+                }
+                else -> {
+                    logger.warn { "Unknown announce mode for guild $guildId, not sending level-up message" }
                 }
             }
-            announceMode.isCurrentChannel() -> {
-                channel.sendMessage(message).queue(
-                    { logger.debug { "Sent level-up message to current channel in guild $guildId" } },
-                    { e -> logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" } }
-                )
+
+            if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
+                rewardRoleObjects.forEach { role ->
+                    try {
+                        guild.addRoleToMember(member, role).queue(
+                            { logger.debug { "Assigned role ${role.name} to user $userId in guild $guildId" } },
+                            { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } }
+                        )
+                    } catch (e: Exception) {
+                        logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" }
+                    }
+                }
             }
-            else -> {
-                logger.warn { "Unknown announce mode for guild $guildId, not sending level-up message" }
-            }
-        }
-        
-        if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
-            rewardRoleObjects.forEach { role ->
-                guild.addRoleToMember(member, role).queue()
-            }
+        } catch (e: Exception) {
+            logger.error(e) { "Critical error in sendLevelUpMessageAndReward for user $userId in guild $guildId" }
         }
     }
 
@@ -1038,25 +1114,87 @@ class LevelService(
      * @param oldLevel The user's previous level
      */
     private suspend fun assignRewardRoles(userId: Long, guildId: Long, level: Int, oldLevel: Int) {
-        if (level <= oldLevel) {
-            return
-        }
-
-        val jda = context.jda
-        val guild = jda.getGuildById(guildId) ?: return
-        val user = jda.getUserById(userId) ?: return
-        val member = guild.getMember(user) ?: return
-
-        val rewardRoles = getRewardRoles(guildId).filter { it.level == level }
-        val rewardRoleObjects = rewardRoles.mapNotNull { guild.getRoleById(it.roleId) }
-
-        if (rewardRoleObjects.isNotEmpty()) {
-            rewardRoleObjects.forEach { role ->
-                guild.addRoleToMember(member, role).queue(
-                    { logger.debug { "Assigned role ${role.name} to user $userId in guild $guildId" } },
-                    { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } }
-                )
+        try {
+            if (level <= oldLevel) {
+                logger.debug { "Not assigning roles for user $userId in guild $guildId as level ($level) is not greater than old level ($oldLevel)" }
+                return
             }
+
+            val jda = context.jda
+            val guild = try {
+                jda.getGuildById(guildId) ?: run {
+                    logger.error { "Failed to get guild $guildId for role assignment, guild not found" }
+                    return
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get guild $guildId for role assignment due to exception" }
+                return
+            }
+
+            val user = try {
+                jda.getUserById(userId) ?: run {
+                    logger.error { "Failed to get user $userId for role assignment, user not found" }
+                    return
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get user $userId for role assignment due to exception" }
+                return
+            }
+
+            val member = try {
+                guild.getMember(user) ?: run {
+                    logger.error { "Failed to get member for user $userId in guild $guildId for role assignment, member not found" }
+                    return
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get member for user $userId in guild $guildId for role assignment due to exception" }
+                return
+            }
+
+            val rewardRoles = try {
+                getRewardRoles(guildId).filter { it.level == level }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get reward roles for guild $guildId, defaulting to empty list" }
+                emptyList()
+            }
+
+            if (rewardRoles.isEmpty()) {
+                logger.debug { "No reward roles found for level $level in guild $guildId" }
+                return
+            }
+
+            val rewardRoleObjects = try {
+                rewardRoles.mapNotNull { 
+                    try {
+                        guild.getRoleById(it.roleId)
+                    } catch (e: Exception) {
+                        logger.error(e) { "Failed to get role ${it.roleId} in guild $guildId for role assignment" }
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to map reward roles to role objects for guild $guildId" }
+                emptyList()
+            }
+
+            if (rewardRoleObjects.isEmpty()) {
+                logger.debug { "No valid reward role objects found for level $level in guild $guildId" }
+                return
+            }
+
+            logger.info { "Assigning ${rewardRoleObjects.size} roles to user $userId in guild $guildId for reaching level $level" }
+            rewardRoleObjects.forEach { role ->
+                try {
+                    guild.addRoleToMember(member, role).queue(
+                        { logger.debug { "Assigned role ${role.name} to user $userId in guild $guildId" } },
+                        { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } }
+                    )
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId due to exception" }
+                }
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Critical error in assignRewardRoles for user $userId in guild $guildId" }
         }
     }
 
