@@ -111,10 +111,12 @@ class LevelService(
 
     private suspend fun checkVoiceChannelsAndAwardXp() {
         logger.debug { "Checking voice channels for XP awards" }
+        var totalAvardedMemberCount = 0
 
         try {
             val jda = context.jda
             val guilds = jda.guilds
+            var awardedMembers = 0
 
             for (guild in guilds) {
                 try {
@@ -163,6 +165,8 @@ class LevelService(
                                         logger.debug { "User $userId in guild $guildId is on cooldown for voice XP" }
                                     } else {
                                         val level = levelAtXp(newXp)
+                                        awardedMembers++
+                                        totalAvardedMemberCount++
                                         logger.debug { "Awarded voice XP to user $userId in guild $guildId. Total XP: $newXp, Level: $level" }
                                     }
                                 } catch (e: Exception) {
@@ -176,10 +180,13 @@ class LevelService(
                 } catch (e: Exception) {
                     logger.error(e) { "Error processing guild ${guild.id}" }
                 }
+                logger.info { "Processed guild ${guild.name} (${guild.id}), awarded XP to $awardedMembers members" }
             }
+            logger.info { "Total awarded members across all guilds: $totalAvardedMemberCount" }
         } catch (e: Exception) {
             logger.error(e) { "Error checking voice channels" }
         }
+        
     }
 
     private suspend fun flushCacheToDatabase() {
