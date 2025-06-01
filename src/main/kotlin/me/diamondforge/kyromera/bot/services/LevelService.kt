@@ -922,17 +922,7 @@ class LevelService(
                 return
             }
 
-            val pingEnabled = try {
-                newSuspendedTransaction {
-                    LevelingUsers.selectAll()
-                        .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
-                        .map { it[LevelingUsers.pingActive] }
-                        .firstOrNull() ?: false
-                }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get ping setting for user $userId in guild $guildId, defaulting to false" }
-                false
-            }
+            val pingEnabled = isPingEnabled(guildId, userId)
 
             val jda = context.jda
             val guild = try {
@@ -1103,6 +1093,49 @@ class LevelService(
         } catch (e: Exception) {
             logger.error(e) { "Critical error in sendLevelUpMessageAndReward for user $userId in guild $guildId" }
         }
+    }
+
+    /**
+     * Checks whether the ping feature is enabled for a specific user in a specific guild.
+     *
+     * @param guildId The ID of the guild to query.
+     * @param userId The ID of the user to check the ping status for.
+     * @return Returns true if the ping feature is enabled for the user in the specified guild, false otherwise.
+     */
+    private suspend fun isPingEnabled(guildId: Long, userId: Long): Boolean {
+        val pingEnabled = try {
+            newSuspendedTransaction {
+                LevelingUsers.selectAll()
+                    .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
+                    .map { it[LevelingUsers.pingActive] }
+                    .firstOrNull() ?: false
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to get ping setting for user $userId in guild $guildId, defaulting to false" }
+            false
+        }
+        return pingEnabled
+    }
+    
+    /**
+     * Toggles the ping notification setting for a user in a specific guild.
+     *
+     * @param guildId The ID of the guild where the setting is being updated.
+     * @param userId The ID of the user whose ping setting is being toggled.
+     * @param enabled A boolean indicating whether ping notifications should be enabled or disabled.
+     */
+    private suspend fun togglePingEnabled(guildId: Long, userId: Long, enabled: Boolean) {
+        val cacheKey = "leveling:ping:$guildId:$userId"
+        redisClient.setWithExpiry(cacheKey, enabled.toString(), 4.hours.inWholeSeconds)
+
+        newSuspendedTransaction {
+            LevelingUsers.update({
+                LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId)
+            }) {
+                it[pingActive] = enabled
+            }
+        }
+        logger.debug { "Set ping enabled for user $userId in guild $guildId to $enabled" }
     }
 
     /**
