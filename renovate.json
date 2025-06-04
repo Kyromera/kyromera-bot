@@ -10,7 +10,7 @@
   "packageRules": [
     {
       "matchManagers": ["gradle"],
-      "automerge": false,
+      "automerge": true,
       "separateMinorPatch": true
     }
   ],
