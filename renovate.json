@@ -1,61 +1,109 @@
 {
-  "extends": ["config:base"],
-  "labels": ["dependencies"],
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "dependencyDashboard": true,
-  "enabledManagers": ["gradle"],
+  "enabledManagers": [
+    "gradle"
+  ],
   "gradle": {
     "enabled": true,
-    "fileMatch": ["(^|/)build.gradle.kts$"]
+    "managerFilePatterns": [
+      "/(^|/)build.gradle.kts$/"
+    ]
   },
   "packageRules": [
     {
-      "matchManagers": ["gradle"],
+      "matchManagers": [
+        "gradle"
+      ],
       "automerge": true,
       "separateMinorPatch": true
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^org\\.jetbrains\\.kotlin"],
-      "groupName": "Kotlin (stdlib, reflect, serialization)"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Kotlin (stdlib, reflect, serialization)",
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.kotlin/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^org\\.jetbrains\\.exposed"],
-      "groupName": "Exposed ORM"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Exposed ORM",
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.exposed/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^io\\.ktor"],
-      "groupName": "Ktor Framework"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Ktor Framework",
+      "matchPackageNames": [
+        "/^io\\.ktor/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^org\\.flywaydb"],
-      "groupName": "Flyway DB"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Flyway DB",
+      "matchPackageNames": [
+        "/^org\\.flywaydb/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^org\\.postgresql"],
-      "groupName": "PostgreSQL Driver"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "PostgreSQL Driver",
+      "matchPackageNames": [
+        "/^org\\.postgresql/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^net\\.dv8tion"],
-      "groupName": "JDA (Discord API)"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "JDA (Discord API)",
+      "matchPackageNames": [
+        "/^net\\.dv8tion/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^com\\.google\\.code\\.gson"],
-      "groupName": "Gson"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Gson",
+      "matchPackageNames": [
+        "/^com\\.google\\.code\\.gson/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchPackagePatterns": ["^io\\.lettuce", "^org\\.apache\\.commons"],
-      "groupName": "Redis & Apache Commons"
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Redis & Apache Commons",
+      "matchPackageNames": [
+        "/^io\\.lettuce/",
+        "/^org\\.apache\\.commons/"
+      ]
     },
     {
-      "matchManagers": ["gradle"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "groupName": "Minor and patch dependency updates"
     }
   ],
