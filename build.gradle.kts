@@ -57,13 +57,13 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.6")
     implementation("net.dv8tion:JDA:5.5.1")
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
-    implementation("org.flywaydb:flyway-core:11.8.2")
+    implementation("org.flywaydb:flyway-core:11.9.0")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("com.google.code.gson:gson:2.13.1")
-    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.3")
+    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.4")
 
     implementation("org.jetbrains.exposed:exposed-core:${exposedVersion}")
     implementation("org.jetbrains.exposed:exposed-crypt:${exposedVersion}")
@@ -72,13 +72,13 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-kotlin-datetime:${exposedVersion}")
     implementation("org.jetbrains.exposed:exposed-json:${exposedVersion}")
 
-    implementation("io.lettuce:lettuce-core:6.6.0.RELEASE")
+    implementation("io.lettuce:lettuce-core:6.7.1.RELEASE")
     implementation("org.apache.commons:commons-pool2:2.12.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
     runtimeOnly("org.postgresql:postgresql")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.8.2")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.9.0")
     testImplementation(kotlin("test"))
 }
 
