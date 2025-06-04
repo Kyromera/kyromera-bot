@@ -1,17 +1,110 @@
 {
-  "extends": ["config:base"],
-  "labels": ["dependencies"],
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "dependencyDashboard": true,
-  "enabledManagers": ["gradle"],
+  "enabledManagers": [
+    "gradle"
+  ],
   "gradle": {
     "enabled": true,
-    "fileMatch": ["(^|/)build.gradle.kts$"]
+    "managerFilePatterns": [
+      "/(^|/)build.gradle.kts$/"
+    ]
   },
   "packageRules": [
     {
-      "matchManagers": ["gradle"],
-      "automerge": false,
+      "matchManagers": [
+        "gradle"
+      ],
+      "automerge": true,
       "separateMinorPatch": true
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Kotlin (stdlib, reflect, serialization)",
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.kotlin/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Exposed ORM",
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.exposed/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Ktor Framework",
+      "matchPackageNames": [
+        "/^io\\.ktor/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Flyway DB",
+      "matchPackageNames": [
+        "/^org\\.flywaydb/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "PostgreSQL Driver",
+      "matchPackageNames": [
+        "/^org\\.postgresql/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "JDA (Discord API)",
+      "matchPackageNames": [
+        "/^net\\.dv8tion/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Gson",
+      "matchPackageNames": [
+        "/^com\\.google\\.code\\.gson/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "groupName": "Redis & Apache Commons",
+      "matchPackageNames": [
+        "/^io\\.lettuce/",
+        "/^org\\.apache\\.commons/"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "Minor and patch dependency updates"
     }
   ],
   "rebaseWhen": "conflicted"

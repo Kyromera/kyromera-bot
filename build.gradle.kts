@@ -91,7 +91,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("com.google.code.gson:gson:2.13.1")
-    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.3")
+    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.4")
 
     implementation("org.jetbrains.exposed:exposed-core:${exposedVersion}")
     implementation("org.jetbrains.exposed:exposed-crypt:${exposedVersion}")
@@ -100,7 +100,7 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-kotlin-datetime:${exposedVersion}")
     implementation("org.jetbrains.exposed:exposed-json:${exposedVersion}")
 
-    implementation("io.lettuce:lettuce-core:6.7.0.RELEASE")
+    implementation("io.lettuce:lettuce-core:6.7.1.RELEASE")
     implementation("org.apache.commons:commons-pool2:2.12.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
