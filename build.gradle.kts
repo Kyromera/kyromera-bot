@@ -85,7 +85,7 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.6")
     implementation("net.dv8tion:JDA:5.5.1")
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
-    implementation("org.flywaydb:flyway-core:11.9.0")
+    implementation("org.flywaydb:flyway-core:11.9.1")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
@@ -106,7 +106,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
     runtimeOnly("org.postgresql:postgresql")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.9.0")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.9.1")
     testImplementation(kotlin("test"))
 }
 
