@@ -16,7 +16,9 @@ import kotlinx.serialization.builtins.ListSerializer
 import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import me.diamondforge.kyromera.bot.enums.XpRewardType
-import me.diamondforge.kyromera.bot.models.database.LevelingRoles
+import me.diamondforge.kyromera.bot.models.CachedXp
+import me.diamondforge.kyromera.bot.models.Rank
+import me.diamondforge.kyromera.bot.models.RewardRole
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.entities.Member
@@ -44,20 +46,6 @@ typealias Level = Int
 
 private val logger = KotlinLogging.logger {}
 
-@Serializable
-data class CachedXp(
-    val guildId: Long,
-    val userId: Long,
-    val xp: Int,
-    val lastUpdated: Long = System.currentTimeMillis()
-)
-
-@Serializable
-data class RewardRole(
-    val guildId: Long,
-    val roleId: Long,
-    val level: Int
-)
 
 @BService
 class LevelService(
@@ -1444,5 +1432,51 @@ class LevelService(
     suspend fun getRewardRoleForLevel(guildId: Long, level: Int): List<RewardRole> {
         return getRewardRoles(guildId).filter { it.level == level }
     }
+
+
+    /**
+     * Retrieves the rank of a user within a specified guild based on their XP.
+     *
+     * This function queries the `LevelingUsers` table to get the user's XP in the specified guild.
+     * If the user does not exist in the table, they are inserted with default values and then re-fetched.
+     * It then calculates the user's rank by counting how many users in the same guild have higher XP.
+     *
+     * @param guildId The ID of the guild in which the user's rank should be determined.
+     * @param userId The ID of the user whose rank is being retrieved.
+     * @return A [Rank] object containing the user's rank, XP, level, and associated IDs.
+     */
+    suspend fun getRank(guildId: Long, userId: Long): Rank = newSuspendedTransaction {
+        val userRow = LevelingUsers
+            .selectAll()
+            .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.userId eq userId) }
+            .singleOrNull()
+            ?: run {
+                LevelingUsers.insert {
+                    it[LevelingUsers.guildId] = guildId
+                    it[LevelingUsers.userId] = userId
+                }
+
+                LevelingUsers
+                    .selectAll()
+                    .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.userId eq userId) }
+                    .single()
+            }
+
+        val userXp = userRow[LevelingUsers.xp]
+
+        val higherXpCount = LevelingUsers
+            .selectAll()
+            .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
+            .count()
+
+        Rank(
+            userId = userId,
+            guildId = guildId,
+            level = levelAtXp(userXp),
+            xp = userXp,
+            rank = higherXpCount + 1
+        )
+    }
+
 
 }
