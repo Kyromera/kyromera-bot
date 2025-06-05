@@ -1,4 +1,6 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.text.SimpleDateFormat
+import java.util.Date
 
 plugins {
     kotlin("jvm") version "2.1.21"
@@ -34,8 +36,34 @@ tasks.withType<ShadowJar> {
 
 }
 
+
+fun getGitTag(): String? = System.getenv("GIT_TAG")
+
+fun getGitHash(): String? =
+    try {
+        Runtime.getRuntime().exec("git rev-parse --short HEAD")
+            .inputStream.bufferedReader().readLine()
+    } catch (e: Exception) {
+        null
+    }
+
+fun getTimestamp(): String =
+    SimpleDateFormat("yyyyMMddHHmmss").format(Date())
+
+val tag = getGitTag()
+val commitHash = getGitHash() ?: "unknown"
+val fallbackVersion = "nightly-$commitHash-${getTimestamp()}"
+
+
+
 group = "me.diamondforge"
-version = "1.0-SNAPSHOT"
+version = tag ?: fallbackVersion
+
+if (tag != null) {
+    println("Using version: $tag")
+} else {
+    println("Using fallback version: $version")
+}
 
 
 
