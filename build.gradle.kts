@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -41,8 +42,11 @@ fun getGitTag(): String? = System.getenv("GIT_TAG")
 
 fun getGitHash(): String? =
     try {
-        Runtime.getRuntime().exec("git rev-parse --short HEAD")
-            .inputStream.bufferedReader().readLine()
+        ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+            .start()
+            .inputStream
+            .bufferedReader()
+            .readLine()
     } catch (e: Exception) {
         null
     }
@@ -120,6 +124,8 @@ tasks.withType<JavaCompile> {
     options.release.set(17)
 }
 
-kotlin {
-    jvmToolchain(17)
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
 }
