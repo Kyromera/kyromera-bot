@@ -51,7 +51,17 @@ data class Config(
             }
 
             logger.info { "Loading configuration from file at ${configFilePath.absolutePathString()}" }
-            return@lazy DefaultObjectMapper.mapper.readValue(configFilePath.readText())
+            try {
+                val configText = configFilePath.readText().trim()
+                if (configText.isEmpty()) {
+                    logger.error { "Configuration file is empty at ${configFilePath.absolutePathString()}" }
+                    throw IllegalStateException("Configuration file is empty")
+                }
+                return@lazy DefaultObjectMapper.mapper.readValue<Config>(configText)
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to load configuration from file: ${e.message}" }
+                throw IllegalStateException("Could not parse configuration file", e)
+            }
         }
 
         private fun loadFromEnv(): Config {
