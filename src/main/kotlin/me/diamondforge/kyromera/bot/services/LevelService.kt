@@ -1473,6 +1473,14 @@ class LevelService(
         return getRewardRoles(guildId).filter { it.level == level }
     }
 
+    /**
+     * Retrieves the XP multiplier for a specified guild. This includes both voice channel and text channel
+     * multipliers, as well as their enabled states. The method checks the cache first for stored data and
+     * falls back to querying the database if necessary. The result is cached for future use.
+     *
+     * @param guildId The unique identifier of the guild for which the XP multiplier is being retrieved.
+     * @return An instance of [XpMultiplier] containing the XP multiplier and related settings for the specified guild.
+     */
     suspend fun getXpMultiplier(guildId: Long): XpMultiplier {
         val cacheKey = "xp:multiplier:$guildId"
         val cachedMultiplier = redisClient.getTyped(cacheKey, XpMultiplier.serializer())
