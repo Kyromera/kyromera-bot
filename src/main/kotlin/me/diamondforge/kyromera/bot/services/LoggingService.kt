@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory
  * This service provides functionality to:
  * - Get the current log level for a specific logger
  * - Set a new log level for a specific logger
- * - Toggle between different log levels
  * - List all available loggers
  */
 @BService
