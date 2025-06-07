@@ -1,5 +1,6 @@
 package me.diamondforge.kyromera.bot.services
 
+import dev.minn.jda.ktx.coroutines.await
 import dev.minn.jda.ktx.messages.MessageCreate
 import io.github.freya022.botcommands.api.core.BContext
 import io.github.freya022.botcommands.api.core.annotations.BEventListener
@@ -19,6 +20,7 @@ import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.CachedXp
 import me.diamondforge.kyromera.bot.models.Rank
 import me.diamondforge.kyromera.bot.models.RewardRole
+import me.diamondforge.kyromera.bot.models.XpMultiplier
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.entities.Member
@@ -477,6 +479,18 @@ class LevelService(
      * @return The user's new total XP after adding the reward, or null if the user is on cooldown
      */
     suspend fun addXp(guildId: Long, userId: Long, type: XpRewardType): Int? {
+        val multiplier = getXpMultiplier(guildId)
+
+        val isEnabled = when (type) {
+            XpRewardType.Message -> multiplier.textEnabled
+            XpRewardType.Voice -> multiplier.vcEnabled
+        }
+
+        if (!isEnabled) {
+            logger.debug { "Leveling for ${type.name} is disabled in guild $guildId" }
+            return null
+        }
+
         val cooldownKey = "xp:cooldown:$guildId:$userId:${type.name}"
         val onCooldown = redisClient.get(cooldownKey) != null
 
@@ -490,7 +504,17 @@ class LevelService(
         redisClient.setWithExpiry(cooldownKey, "1", cooldown.inWholeSeconds)
 
         val baseXp = getBaseXp(type)
-        logger.trace { "Adding $baseXp XP for user $userId in guild $guildId for type ${type.name}" }
+        val multipliedXp = when (type) {
+            XpRewardType.Message -> (baseXp * multiplier.textMultiplier).toInt()
+            XpRewardType.Voice -> (baseXp * multiplier.vcMultiplier).toInt()
+        }
+
+        logger.debug { "Adding $multipliedXp XP (base: $baseXp, multiplier: ${
+            when (type) {
+                XpRewardType.Message -> multiplier.textMultiplier
+                XpRewardType.Voice -> multiplier.vcMultiplier
+            }
+        }) for user $userId in guild $guildId for type ${type.name}" }
 
         val cacheKey = "xp:pending:$guildId:$userId"
         val currentCachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
@@ -519,8 +543,8 @@ class LevelService(
         }
 
         val newCachedXp =
-            currentCachedXp?.copy(xp = currentCachedXp.xp + baseXp, lastUpdated = System.currentTimeMillis())
-                ?: CachedXp(guildId, userId, baseXp, System.currentTimeMillis())
+            currentCachedXp?.copy(xp = currentCachedXp.xp + multipliedXp, lastUpdated = System.currentTimeMillis())
+                ?: CachedXp(guildId, userId, multipliedXp, System.currentTimeMillis())
 
         redisClient.setTyped(cacheKey, newCachedXp, CachedXp.serializer())
 
@@ -925,8 +949,10 @@ class LevelService(
 
             val user = try {
                 jda.getUserById(userId) ?: run {
-                    logger.error { "Failed to get user $userId, user not found" }
-                    return
+                    jda.retrieveUserById(userId).await() ?: run {
+                        logger.error { "Failed to get user $userId, user not found" }
+                        return
+                    }
                 }
             } catch (e: Exception) {
                 logger.error(e) { "Failed to get user $userId due to exception" }
@@ -1104,7 +1130,7 @@ class LevelService(
         }
         return pingEnabled
     }
-    
+
     /**
      * Toggles the ping notification setting for a user in a specific guild.
      *
@@ -1155,6 +1181,9 @@ class LevelService(
 
         // Drop last message channel cache
         dropLastMessageChannelCache(guildId)
+
+        // Drop XP multiplier cache
+        dropXpMultiplierCache(guildId)
 
         logger.info { "Successfully dropped all caches for guild $guildId" }
     }
@@ -1236,6 +1265,17 @@ class LevelService(
         val cacheKey = "xp:runtimecache:$guildId:$userId"
         redisClient.delete(cacheKey)
         logger.debug { "Dropped XP runtime cache for user $userId in guild $guildId" }
+    }
+
+    /**
+     * Drops the XP multiplier cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropXpMultiplierCache(guildId: Long) {
+        val cacheKey = "xp:multiplier:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped XP multiplier cache for guild $guildId" }
     }
 
     /**
@@ -1431,6 +1471,38 @@ class LevelService(
      */
     suspend fun getRewardRoleForLevel(guildId: Long, level: Int): List<RewardRole> {
         return getRewardRoles(guildId).filter { it.level == level }
+    }
+
+    suspend fun getXpMultiplier(guildId: Long): XpMultiplier {
+        val cacheKey = "xp:multiplier:$guildId"
+        val cachedMultiplier = redisClient.getTyped(cacheKey, XpMultiplier.serializer())
+        logger.trace { "Checking cache for XP multiplier for guild $guildId: $cachedMultiplier" }
+
+        if (cachedMultiplier != null) {
+            logger.trace { "Using cached XP multiplier for guild $guildId" }
+            return cachedMultiplier
+        }
+
+        val multiplier = newSuspendedTransaction {
+            LevelingSettings
+                .selectAll()
+                .where(LevelingSettings.guildId eq guildId)
+                .map {
+                    XpMultiplier(
+                        guildId = it[LevelingSettings.guildId],
+                        vcMultiplier = it[LevelingSettings.vcMulti],
+                        textMultiplier = it[LevelingSettings.textMulti],
+                        textEnabled = it[LevelingSettings.textEnabled],
+                        vcEnabled = it[LevelingSettings.vcEnabled]
+                    )
+                }
+                .firstOrNull() ?: XpMultiplier(guildId, 1.0, 1.0,)
+        }
+        logger.trace { "Retrieved XP multiplier for guild $guildId: $multiplier" }
+
+        redisClient.setTypedWithExpiry(cacheKey, multiplier, 300, XpMultiplier.serializer())
+
+        return multiplier
     }
 
 
