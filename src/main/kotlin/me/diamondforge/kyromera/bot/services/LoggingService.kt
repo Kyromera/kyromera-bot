@@ -63,15 +63,16 @@ class LoggingService {
         return true
     }
 
+    
     /**
-     * Toggles the log level for a specific logger between INFO and DEBUG.
-     * If the current level is DEBUG, it will be set to INFO.
-     * If the current level is anything else, it will be set to DEBUG.
+     * Toggles the log level for a specified logger. If the logger name is null or blank, the root logger is used.
+     * If the provided level is invalid, the method logs an error and returns an "Invalid log level" message.
      *
-     * @param loggerName The name of the logger to toggle. If null, toggles the root logger.
-     * @return The new log level after toggling.
+     * @param loggerName The name of the logger to toggle the log level for. If null or blank, the root logger is used.
+     * @param level The new log level to apply. Expected values are TRACE, DEBUG, INFO, WARN, ERROR, or OFF.
+     * @return The new log level as a string, or "Invalid log level" if an invalid level is provided.
      */
-    fun toggleLogLevel(loggerName: String? = null): String {
+    fun toggleLogLevel(loggerName: String?, level: String): String {
         val targetLogger = if (loggerName.isNullOrBlank()) {
             loggerContext.getLogger(Logger.ROOT_LOGGER_NAME)
         } else {
@@ -79,9 +80,17 @@ class LoggingService {
         }
 
         val currentLevel = targetLogger.level
-        val newLevel = when (currentLevel) {
-            Level.DEBUG -> Level.INFO
-            else -> Level.DEBUG
+        val newLevel = when (level.uppercase()) {
+            "TRACE" -> Level.TRACE
+            "DEBUG" -> Level.DEBUG
+            "INFO" -> Level.INFO
+            "WARN" -> Level.WARN
+            "ERROR" -> Level.ERROR
+            "OFF" -> Level.OFF
+            else -> {
+                logger.error { "Invalid log level: $level. Valid levels are: TRACE, DEBUG, INFO, WARN, ERROR, OFF" }
+                return "Invalid log level"
+            }
         }
 
         targetLogger.level = newLevel
