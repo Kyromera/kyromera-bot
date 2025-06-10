@@ -109,6 +109,10 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
+
+    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.1.107.Final:osx-x86_64")
+    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.1.107.Final:osx-aarch_64")
+
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:11.9.1")
     testImplementation(kotlin("test"))
