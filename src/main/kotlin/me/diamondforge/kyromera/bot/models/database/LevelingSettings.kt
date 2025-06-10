@@ -15,7 +15,6 @@ object LevelingSettings : Table("leveling_settings") {
     val levelupMessageReward = text("levelup_message_reward").nullable()
     val retainRoles = bool("retain_roles").default(false)
     val lastRecalc = long("last_recalc").default(0)
-    val whitelistMode = bool("whitelist_mode").default(false) // Deprecated, use filterMode instead
     val filterMode = varchar("filter_mode", 16).default(FilterMode.DENYLIST.value).check {
         it inList FilterMode.entries.map { mode -> mode.value }
     }

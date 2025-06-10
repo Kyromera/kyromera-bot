@@ -5,6 +5,7 @@ import io.github.freya022.botcommands.api.core.service.annotations.BService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import me.diamondforge.kyromera.bot.enums.FilterMode
 import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
@@ -77,7 +78,7 @@ class GuildJoinListener() {
                                 it[vcMulti] = 1.0
                                 it[retainRoles] = false
                                 it[lastRecalc] = 0
-                                it[whitelistMode] = false
+                                it[filterMode] = FilterMode.DENYLIST.value
                                 it[levelupAnnounceMode] = LevelUpAnnounceMode.CURRENT.value
                             }
                             logger.trace { "Successfully created default leveling settings for guild $guildId" }

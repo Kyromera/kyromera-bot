@@ -1903,14 +1903,11 @@ class LevelService(
             if (exists) {
                 LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
                     it[filterMode] = mode.value
-                    // For backward compatibility
-                    it[whitelistMode] = mode == FilterMode.ALLOWLIST
                 }
             } else {
                 LevelingSettings.insert {
                     it[LevelingSettings.guildId] = guildId
                     it[filterMode] = mode.value
-                    it[whitelistMode] = mode == FilterMode.ALLOWLIST
                 }
             }
         }
