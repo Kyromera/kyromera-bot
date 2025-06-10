@@ -11,8 +11,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import me.diamondforge.kyromera.bot.KyromeraScope
 import me.diamondforge.kyromera.bot.enums.FilterMode
@@ -21,9 +19,11 @@ import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.CachedXp
 import me.diamondforge.kyromera.bot.models.Rank
 import me.diamondforge.kyromera.bot.models.RewardRole
+import me.diamondforge.kyromera.bot.models.RoleMultiplier
 import me.diamondforge.kyromera.bot.models.XpMultiplier
 import me.diamondforge.kyromera.bot.models.database.LevelingFilteredChannels
 import me.diamondforge.kyromera.bot.models.database.LevelingFilteredRoles
+import me.diamondforge.kyromera.bot.models.database.LevelingRoles
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.entities.Member
@@ -530,17 +530,24 @@ class LevelService(
         redisClient.setWithExpiry(cooldownKey, "1", cooldown.inWholeSeconds)
 
         val baseXp = getBaseXp(type)
-        val multipliedXp = when (type) {
-            XpRewardType.Message -> (baseXp * multiplier.textMultiplier).toInt()
-            XpRewardType.Voice -> (baseXp * multiplier.vcMultiplier).toInt()
+
+        // Get role multiplier if roleIds are provided
+        val roleMultiplier = if (roleIds != null && roleIds.isNotEmpty()) {
+            getRoleMultiplier(guildId, roleIds)
+        } else {
+            RoleMultiplier.DEFAULT_MULTIPLIER
         }
 
-        logger.debug { "Adding $multipliedXp XP (base: $baseXp, multiplier: ${
-            when (type) {
-                XpRewardType.Message -> multiplier.textMultiplier
-                XpRewardType.Voice -> multiplier.vcMultiplier
-            }
-        }) for user $userId in guild $guildId for type ${type.name}" }
+        // Apply both activity type multiplier and role multiplier
+        val activityMultiplier = when (type) {
+            XpRewardType.Message -> multiplier.textMultiplier
+            XpRewardType.Voice -> multiplier.vcMultiplier
+        }
+
+        val totalMultiplier = activityMultiplier * roleMultiplier
+        val multipliedXp = (baseXp * totalMultiplier).toInt()
+
+        logger.debug { "Adding $multipliedXp XP (base: $baseXp, activity multiplier: $activityMultiplier, role multiplier: $roleMultiplier, total multiplier: $totalMultiplier) for user $userId in guild $guildId for type ${type.name}" }
 
         val cacheKey = "xp:pending:$guildId:$userId"
         val currentCachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
@@ -1221,6 +1228,9 @@ class LevelService(
         // Drop XP multiplier cache
         dropXpMultiplierCache(guildId)
 
+        // Drop role multipliers cache
+        dropRoleMultipliersCache(guildId)
+
         // Drop filter-related caches
         dropFilterModeCache(guildId)
         dropAllFilteredChannelCaches(guildId)
@@ -1317,6 +1327,17 @@ class LevelService(
         val cacheKey = "xp:multiplier:$guildId"
         redisClient.delete(cacheKey)
         logger.debug { "Dropped XP multiplier cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the role multipliers cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropRoleMultipliersCache(guildId: Long) {
+        val cacheKey = "rolemultipliers:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped role multipliers cache for guild $guildId" }
     }
 
     /**
@@ -1566,6 +1587,185 @@ class LevelService(
     }
 
     /**
+     * Retrieves the list of role multipliers configured for a guild.
+     * 
+     * This method fetches role multipliers that are applied to users with specific roles.
+     * It first checks the Redis cache, and if not found, queries the database.
+     * The results are cached for future use to improve performance.
+     *
+     * @param guildId The ID of the guild to get role multipliers for
+     * @return A list of RoleMultiplier objects containing role IDs and their multipliers
+     */
+    suspend fun getRoleMultipliers(guildId: Long): List<RoleMultiplier> {
+        val serializer = ListSerializer(RoleMultiplier.serializer())
+        val cacheKey = "rolemultipliers:$guildId"
+        val cachedMultipliers = redisClient.getTyped(cacheKey, serializer)
+
+        if (cachedMultipliers != null) {
+            logger.debug { "Found cached role multipliers for guild $guildId" }
+            return cachedMultipliers
+        }
+
+        logger.debug { "No cached role multipliers found for guild $guildId, querying database" }
+        val dbMultipliers = newSuspendedTransaction {
+            LevelingRoles.selectAll()
+                .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleType eq "multiplier"))
+                .mapNotNull {
+                    val multiplier = it[LevelingRoles.multiplier]
+                    if (multiplier != null) {
+                        RoleMultiplier(
+                            guildId = it[LevelingRoles.guildId],
+                            roleId = it[LevelingRoles.roleId],
+                            multiplier = multiplier
+                        )
+                    } else {
+                        null
+                    }
+                }
+        }
+
+        if (dbMultipliers.isEmpty()) {
+            logger.debug { "No role multipliers found in database for guild $guildId" }
+            return emptyList()
+        }
+
+        redisClient.setTypedWithExpiry(cacheKey, dbMultipliers, 60.minutes.inWholeSeconds, serializer)
+        logger.debug { "Cached ${dbMultipliers.size} role multipliers for guild $guildId" }
+        return dbMultipliers
+    }
+
+    /**
+     * Sets or updates a multiplier for a specific role in a guild.
+     * 
+     * This method adds a new role multiplier or updates an existing one in the database.
+     * It also invalidates the cache for role multipliers in the guild.
+     *
+     * @param guildId The ID of the guild
+     * @param roleId The ID of the role to set the multiplier for
+     * @param multiplier The multiplier value to set (must be >= 0.0)
+     * @return True if the operation was successful, false otherwise
+     */
+    suspend fun setRoleMultiplier(guildId: Long, roleId: Long, multiplier: Double): Boolean {
+        if (multiplier < 0.0) {
+            logger.error { "Cannot set role multiplier to negative value: $multiplier" }
+            return false
+        }
+
+        try {
+            newSuspendedTransaction {
+                // Check if the role multiplier already exists
+                val existingMultiplier = LevelingRoles.selectAll()
+                    .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleId eq roleId) and (LevelingRoles.roleType eq "multiplier"))
+                    .singleOrNull()
+
+                if (existingMultiplier != null) {
+                    // Update existing multiplier
+                    LevelingRoles.update({ 
+                        (LevelingRoles.guildId eq guildId) and 
+                        (LevelingRoles.roleId eq roleId) and 
+                        (LevelingRoles.roleType eq "multiplier") 
+                    }) {
+                        it[LevelingRoles.multiplier] = multiplier
+                    }
+                    logger.debug { "Updated multiplier for role $roleId in guild $guildId to $multiplier" }
+                } else {
+                    // Insert new multiplier
+                    LevelingRoles.insert {
+                        it[LevelingRoles.guildId] = guildId
+                        it[LevelingRoles.roleId] = roleId
+                        it[LevelingRoles.roleType] = "multiplier"
+                        it[LevelingRoles.multiplier] = multiplier
+                    }
+                    logger.debug { "Added new multiplier for role $roleId in guild $guildId: $multiplier" }
+                }
+            }
+
+            val cacheKey = "rolemultipliers:$guildId"
+            redisClient.delete(cacheKey)
+            logger.debug { "Invalidated role multipliers cache for guild $guildId" }
+
+            return true
+        } catch (e: Exception) {
+            logger.error(e) { "Error setting role multiplier for role $roleId in guild $guildId" }
+            return false
+        }
+    }
+
+    /**
+     * Removes a role multiplier from the database.
+     * 
+     * This method deletes a role multiplier from the database and invalidates the cache.
+     *
+     * @param guildId The ID of the guild
+     * @param roleId The ID of the role to remove the multiplier for
+     * @return True if the operation was successful, false otherwise
+     */
+    suspend fun removeRoleMultiplier(guildId: Long, roleId: Long): Boolean {
+        try {
+            val deleted = newSuspendedTransaction {
+                LevelingRoles.deleteWhere { 
+                    (LevelingRoles.guildId eq guildId) and 
+                    (LevelingRoles.roleId eq roleId) and 
+                    (LevelingRoles.roleType eq "multiplier") 
+                }
+            }
+
+            // Invalidate cache
+            val cacheKey = "rolemultipliers:$guildId"
+            redisClient.delete(cacheKey)
+            logger.debug { "Invalidated role multipliers cache for guild $guildId" }
+
+            return deleted > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error removing role multiplier for role $roleId in guild $guildId" }
+            return false
+        }
+    }
+
+    /**
+     * Calculates the role multiplier for a user based on their roles.
+     * 
+     * This method retrieves all role multipliers for a guild and then either:
+     * 1. Finds the highest multiplier among the roles that the user has (default behavior)
+     * 2. Multiplies all role multipliers together (if stacking is enabled)
+     * 
+     * If the user has no roles with multipliers, the default multiplier (1.0) is returned.
+     *
+     * @param guildId The ID of the guild
+     * @param roleIds The IDs of the roles the user has
+     * @return The calculated multiplier value based on the guild's stacking preference
+     */
+    suspend fun getRoleMultiplier(guildId: Long, roleIds: List<Long>): Double {
+        if (roleIds.isEmpty()) {
+            return RoleMultiplier.DEFAULT_MULTIPLIER
+        }
+
+        val roleMultipliers = getRoleMultipliers(guildId)
+        if (roleMultipliers.isEmpty()) {
+            return RoleMultiplier.DEFAULT_MULTIPLIER
+        }
+
+        val userRoleMultipliers = roleMultipliers.filter { it.roleId in roleIds }
+        if (userRoleMultipliers.isEmpty()) {
+            return RoleMultiplier.DEFAULT_MULTIPLIER
+        }
+
+        // Get the guild's stacking preference
+        val multiplierSettings = getXpMultiplier(guildId)
+        val stackMultipliers = multiplierSettings.stackRoleMultipliers
+
+        return if (stackMultipliers) {
+            // Multiply all role multipliers together
+            userRoleMultipliers.fold(RoleMultiplier.DEFAULT_MULTIPLIER) { acc, roleMultiplier ->
+                acc * roleMultiplier.multiplier
+            }
+        } else {
+            // Use the highest multiplier (original behavior)
+            userRoleMultipliers.maxOf { it.multiplier }
+        }
+    }
+
+    /**
      * Retrieves the XP multiplier for a specified guild. This includes both voice channel and text channel
      * multipliers, as well as their enabled states. The method checks the cache first for stored data and
      * falls back to querying the database if necessary. The result is cached for future use.
@@ -1593,7 +1793,8 @@ class LevelService(
                         vcMultiplier = it[LevelingSettings.vcMulti],
                         textMultiplier = it[LevelingSettings.textMulti],
                         textEnabled = it[LevelingSettings.textEnabled],
-                        vcEnabled = it[LevelingSettings.vcEnabled]
+                        vcEnabled = it[LevelingSettings.vcEnabled],
+                        stackRoleMultipliers = it[LevelingSettings.stackRoleMultipliers]
                     )
                 }
                 .firstOrNull() ?: XpMultiplier(guildId, 1.0, 1.0,)
@@ -1722,6 +1923,39 @@ class LevelService(
         dropAllFilteredRoleCaches(guildId)
 
         logger.info { "Set filter mode for guild $guildId to ${mode.value} and invalidated filter caches" }
+    }
+
+    /**
+     * Sets whether role multipliers should be stacked (multiplied together) or only the highest should be used.
+     *
+     * @param guildId The ID of the guild to set the stacking preference for
+     * @param stackMultipliers True to stack/multiply all role multipliers, false to use only the highest
+     */
+    suspend fun setStackRoleMultipliers(guildId: Long, stackMultipliers: Boolean) {
+        val cacheKey = "xp:multiplier:$guildId"
+
+        newSuspendedTransaction {
+            val exists = LevelingSettings
+                .selectAll()
+                .where(LevelingSettings.guildId eq guildId)
+                .count() > 0
+
+            if (exists) {
+                LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
+                    it[stackRoleMultipliers] = stackMultipliers
+                }
+            } else {
+                LevelingSettings.insert {
+                    it[LevelingSettings.guildId] = guildId
+                    it[LevelingSettings.stackRoleMultipliers] = stackMultipliers
+                }
+            }
+        }
+
+        // Invalidate the XP multiplier cache since it includes the stacking preference
+        redisClient.delete(cacheKey)
+
+        logger.info { "Set role multiplier stacking for guild $guildId to $stackMultipliers and invalidated XP multiplier cache" }
     }
 
     /**

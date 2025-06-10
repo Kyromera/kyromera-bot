@@ -22,6 +22,7 @@ object LevelingSettings : Table("leveling_settings") {
     val levelupAnnounceMode = varchar("levelup_announce_mode", 16).default(LevelUpAnnounceMode.CURRENT.value).check {
         it inList LevelUpAnnounceMode.entries.map { mode -> mode.value }
     }
+    val stackRoleMultipliers = bool("stack_role_multipliers").default(false)
 
     override val primaryKey = PrimaryKey(guildId)
 }
