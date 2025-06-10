@@ -15,12 +15,15 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import me.diamondforge.kyromera.bot.KyromeraScope
+import me.diamondforge.kyromera.bot.enums.FilterMode
 import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.CachedXp
 import me.diamondforge.kyromera.bot.models.Rank
 import me.diamondforge.kyromera.bot.models.RewardRole
 import me.diamondforge.kyromera.bot.models.XpMultiplier
+import me.diamondforge.kyromera.bot.models.database.LevelingFilteredChannels
+import me.diamondforge.kyromera.bot.models.database.LevelingFilteredRoles
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
 import net.dv8tion.jda.api.entities.Member
@@ -31,6 +34,7 @@ import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
@@ -335,11 +339,13 @@ class LevelService(
 
                                     val guildId = guild.idLong
                                     val userId = member.idLong
+                                    val channelId = voiceChannel.idLong
+                                    val roleIds = member.roles.map { it.idLong }
 
-                                    val newXp = addXp(guildId, userId, XpRewardType.Voice)
+                                    val newXp = addXp(guildId, userId, XpRewardType.Voice, channelId, roleIds)
 
                                     if (newXp == null) {
-                                        logger.debug { "User $userId in guild $guildId is on cooldown for voice XP" }
+                                        logger.debug { "User $userId in guild $guildId did not receive XP for voice (cooldown or filtered)" }
                                     } else {
                                         val level = levelAtXp(newXp)
                                         awardedMembers++
@@ -476,9 +482,11 @@ class LevelService(
      * @param guildId The ID of the guild where the user earned XP
      * @param userId The ID of the user to award XP to
      * @param type The type of activity that earned the XP (message, voice, etc.)
-     * @return The user's new total XP after adding the reward, or null if the user is on cooldown
+     * @param channelId The ID of the channel where the activity occurred (optional)
+     * @param roleIds The IDs of the roles the user has (optional)
+     * @return The user's new total XP after adding the reward, or null if the user is on cooldown or filtered
      */
-    suspend fun addXp(guildId: Long, userId: Long, type: XpRewardType): Int? {
+    suspend fun addXp(guildId: Long, userId: Long, type: XpRewardType, channelId: Long? = null, roleIds: List<Long>? = null): Int? {
         val multiplier = getXpMultiplier(guildId)
 
         val isEnabled = when (type) {
@@ -489,6 +497,24 @@ class LevelService(
         if (!isEnabled) {
             logger.debug { "Leveling for ${type.name} is disabled in guild $guildId" }
             return null
+        }
+
+        // Check if the channel is allowed based on filter settings
+        if (channelId != null) {
+            val isChannelAllowed = isChannelAllowed(guildId, channelId)
+            if (!isChannelAllowed) {
+                logger.debug { "Channel $channelId in guild $guildId is filtered for XP gain" }
+                return null
+            }
+        }
+
+        // Check if the user's roles are allowed based on filter settings
+        if (roleIds != null) {
+            val isRoleAllowed = isRoleAllowed(guildId, roleIds)
+            if (!isRoleAllowed) {
+                logger.debug { "User $userId with roles $roleIds in guild $guildId is filtered for XP gain" }
+                return null
+            }
         }
 
         val cooldownKey = "xp:cooldown:$guildId:$userId:${type.name}"
@@ -802,9 +828,9 @@ class LevelService(
      * This method is called when a new message is sent in a guild. It:
      * 1. Filters out messages from bots and DMs
      * 2. Records the channel as the last active channel in the guild
-     * 3. Awards XP to the message author if they're not on cooldown
+     * 3. Awards XP to the message author if they're not on cooldown and not filtered
      * 
-     * The XP award is subject to cooldown periods to prevent spam.
+     * The XP award is subject to cooldown periods to prevent spam and filter settings.
      *
      * @param createEvent The message received event containing information about the message
      */
@@ -819,12 +845,16 @@ class LevelService(
         val userId = createEvent.author.idLong
         val channelId = createEvent.channel.idLong
 
+        // Get the member's roles
+        val member = createEvent.member
+        val roleIds = member?.roles?.map { it.idLong } ?: emptyList()
+
         setLastMessageChannelInGuild(guildId, channelId)
 
-        val newXp = addXp(guildId, userId, XpRewardType.Message)
+        val newXp = addXp(guildId, userId, XpRewardType.Message, channelId, roleIds)
 
         if (newXp == null) {
-            logger.debug { "User $userId in guild $guildId is on cooldown for message XP" }
+            logger.debug { "User $userId in guild $guildId did not receive XP for message (cooldown or filtered)" }
             return
         }
         val level = levelAtXp(newXp)
@@ -1117,6 +1147,12 @@ class LevelService(
      * @return Returns true if the ping feature is enabled for the user in the specified guild, false otherwise.
      */
     private suspend fun isPingEnabled(guildId: Long, userId: Long): Boolean {
+        val cacheKey = "leveling:ping:$guildId:$userId"
+        val cachedPing = redisClient.get(cacheKey)?.toBoolean()
+        if (cachedPing != null) {
+            logger.debug { "Found cached ping setting for user $userId in guild $guildId: $cachedPing" }
+            return cachedPing
+        }
         val pingEnabled = try {
             newSuspendedTransaction {
                 LevelingUsers.selectAll()
@@ -1184,6 +1220,11 @@ class LevelService(
 
         // Drop XP multiplier cache
         dropXpMultiplierCache(guildId)
+
+        // Drop filter-related caches
+        dropFilterModeCache(guildId)
+        dropAllFilteredChannelCaches(guildId)
+        dropAllFilteredRoleCaches(guildId)
 
         logger.info { "Successfully dropped all caches for guild $guildId" }
     }
@@ -1276,6 +1317,57 @@ class LevelService(
         val cacheKey = "xp:multiplier:$guildId"
         redisClient.delete(cacheKey)
         logger.debug { "Dropped XP multiplier cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the filter mode cache for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the cache for
+     */
+    suspend fun dropFilterModeCache(guildId: Long) {
+        val cacheKey = "filter:mode:$guildId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped filter mode cache for guild $guildId" }
+    }
+
+    /**
+     * Drops the cache for a specific filtered channel in a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param channelId The ID of the channel
+     */
+    suspend fun dropFilteredChannelCache(guildId: Long, channelId: Long) {
+        val cacheKey = "filter:channel:$guildId:$channelId"
+        redisClient.delete(cacheKey)
+        logger.debug { "Dropped filtered channel cache for channel $channelId in guild $guildId" }
+    }
+
+    /**
+     * Drops all filtered channel caches for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the caches for
+     */
+    suspend fun dropAllFilteredChannelCaches(guildId: Long) {
+        val pattern = "filter:channel:$guildId:*"
+        val keys = redisClient.getKeysByPattern(pattern)
+        if (keys.isNotEmpty()) {
+            keys.forEach { redisClient.delete(it) }
+            logger.debug { "Dropped ${keys.size} filtered channel caches for guild $guildId" }
+        }
+    }
+
+    /**
+     * Drops all filtered role caches for a specific guild.
+     *
+     * @param guildId The ID of the guild to drop the caches for
+     */
+    suspend fun dropAllFilteredRoleCaches(guildId: Long) {
+        val pattern = "filter:role:$guildId:*"
+        val keys = redisClient.getKeysByPattern(pattern)
+        if (keys.isNotEmpty()) {
+            keys.forEach { redisClient.delete(it) }
+            logger.debug { "Dropped ${keys.size} filtered role caches for guild $guildId" }
+        }
     }
 
     /**
@@ -1558,5 +1650,255 @@ class LevelService(
         )
     }
 
+    /**
+     * Gets the filter mode for a guild.
+     *
+     * This method retrieves the filter mode (blacklist or whitelist) from the database.
+     * In blacklist mode, all channels/roles are allowed except those in the filter list.
+     * In whitelist mode, only channels/roles in the filter list are allowed.
+     *
+     * @param guildId The ID of the guild to get the filter mode for
+     * @return The FilterMode (BLACKLIST or WHITELIST)
+     */
+    suspend fun getFilterMode(guildId: Long): FilterMode {
+        val cacheKey = "filter:mode:$guildId"
+        val cachedMode = redisClient.get(cacheKey)
 
+        if (cachedMode != null) {
+            logger.debug { "Using cached filter mode for guild $guildId: $cachedMode" }
+            return FilterMode.fromString(cachedMode)
+        }
+
+        logger.debug { "No cached filter mode found for guild $guildId, querying database" }
+        val mode = newSuspendedTransaction {
+            LevelingSettings
+                .selectAll()
+                .where(LevelingSettings.guildId eq guildId)
+                .map { it[LevelingSettings.filterMode] }
+                .firstOrNull() ?: FilterMode.BLACKLIST.value
+        }
+
+        redisClient.setWithExpiry(cacheKey, mode, 4.hours.inWholeSeconds)
+        logger.debug { "Cached filter mode for guild $guildId: $mode" }
+
+        return FilterMode.fromString(mode)
+    }
+
+    /**
+     * Sets the filter mode for a guild.
+     *
+     * @param guildId The ID of the guild to set the filter mode for
+     * @param mode The FilterMode to set (BLACKLIST or WHITELIST)
+     */
+    suspend fun setFilterMode(guildId: Long, mode: FilterMode) {
+        val cacheKey = "filter:mode:$guildId"
+
+        newSuspendedTransaction {
+            val exists = LevelingSettings
+                .selectAll()
+                .where(LevelingSettings.guildId eq guildId)
+                .count() > 0
+
+            if (exists) {
+                LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
+                    it[filterMode] = mode.value
+                    // For backward compatibility
+                    it[whitelistMode] = mode == FilterMode.WHITELIST
+                }
+            } else {
+                LevelingSettings.insert {
+                    it[LevelingSettings.guildId] = guildId
+                    it[filterMode] = mode.value
+                    it[whitelistMode] = mode == FilterMode.WHITELIST
+                }
+            }
+        }
+
+        // Update the filter mode cache
+        redisClient.setWithExpiry(cacheKey, mode.value, 4.hours.inWholeSeconds)
+
+        // Invalidate all channel and role filter caches since they depend on the filter mode
+        dropAllFilteredChannelCaches(guildId)
+        dropAllFilteredRoleCaches(guildId)
+
+        logger.info { "Set filter mode for guild $guildId to ${mode.value} and invalidated filter caches" }
+    }
+
+    /**
+     * Checks if a channel is allowed to earn XP based on the guild's filter mode and filter list.
+     *
+     * @param guildId The ID of the guild
+     * @param channelId The ID of the channel to check
+     * @return True if the channel is allowed to earn XP, false otherwise
+     */
+    suspend fun isChannelAllowed(guildId: Long, channelId: Long): Boolean {
+        val filterMode = getFilterMode(guildId)
+        val cacheKey = "filter:channel:$guildId:$channelId"
+
+        val cachedResult = redisClient.get(cacheKey)?.toBoolean()
+        if (cachedResult != null) {
+            logger.debug { "Using cached channel filter result for channel $channelId in guild $guildId: $cachedResult" }
+            return cachedResult
+        }
+
+        val isInFilterList = newSuspendedTransaction {
+            LevelingFilteredChannels
+                .selectAll()
+                .where(LevelingFilteredChannels.guildId eq guildId and (LevelingFilteredChannels.channelId eq channelId))
+                .count() > 0
+        }
+
+        // In blacklist mode, channels in the filter list are NOT allowed
+        // In whitelist mode, ONLY channels in the filter list are allowed
+        val isAllowed = when (filterMode) {
+            FilterMode.BLACKLIST -> !isInFilterList
+            FilterMode.WHITELIST -> isInFilterList
+        }
+
+        redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
+        logger.debug { "Channel $channelId in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, in filter list: $isInFilterList)" }
+
+        return isAllowed
+    }
+
+    /**
+     * Checks if a user with specific roles is allowed to earn XP based on the guild's filter mode and filter list.
+     *
+     * @param guildId The ID of the guild
+     * @param roleIds The IDs of the roles to check
+     * @return True if the user with these roles is allowed to earn XP, false otherwise
+     */
+    suspend fun isRoleAllowed(guildId: Long, roleIds: List<Long>): Boolean {
+        if (roleIds.isEmpty()) {
+            // If the user has no roles, use the default behavior based on filter mode
+            val filterMode = getFilterMode(guildId)
+            return filterMode == FilterMode.BLACKLIST
+        }
+
+        // Create a cache key based on guild ID and role IDs
+        // We need to sort and join the role IDs to ensure consistent cache keys
+        val sortedRoleIds = roleIds.sorted().joinToString("-")
+        val cacheKey = "filter:role:$guildId:$sortedRoleIds"
+
+        // Check if we have a cached result
+        val cachedResult = redisClient.get(cacheKey)?.toBoolean()
+        if (cachedResult != null) {
+            logger.debug { "Using cached role filter result for roles $roleIds in guild $guildId: $cachedResult" }
+            return cachedResult
+        }
+
+        val filterMode = getFilterMode(guildId)
+
+        val filteredRoles = newSuspendedTransaction {
+            LevelingFilteredRoles
+                .selectAll()
+                .where(LevelingFilteredRoles.guildId eq guildId)
+                .map { it[LevelingFilteredRoles.roleId] }
+                .toSet()
+        }
+
+        // Check if any of the user's roles are in the filter list
+        val hasFilteredRole = roleIds.any { it in filteredRoles }
+
+        // In blacklist mode, users with roles in the filter list are NOT allowed
+        // In whitelist mode, ONLY users with roles in the filter list are allowed
+        val isAllowed = when (filterMode) {
+            FilterMode.BLACKLIST -> !hasFilteredRole
+            FilterMode.WHITELIST -> hasFilteredRole
+        }
+
+        // Cache the result
+        redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
+        logger.debug { "User with roles $roleIds in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, has filtered role: $hasFilteredRole)" }
+
+        return isAllowed
+    }
+
+    /**
+     * Adds a channel to the filter list for a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param channelId The ID of the channel to add to the filter list
+     */
+    suspend fun addFilteredChannel(guildId: Long, channelId: Long) {
+        newSuspendedTransaction {
+            val exists = LevelingFilteredChannels
+                .selectAll()
+                .where(LevelingFilteredChannels.guildId eq guildId and (LevelingFilteredChannels.channelId eq channelId))
+                .count() > 0
+
+            if (!exists) {
+                LevelingFilteredChannels.insert {
+                    it[LevelingFilteredChannels.guildId] = guildId
+                    it[LevelingFilteredChannels.channelId] = channelId
+                }
+                logger.info { "Added channel $channelId to filter list for guild $guildId" }
+            }
+        }
+
+        // Invalidate cache
+        redisClient.delete("filter:channel:$guildId:$channelId")
+    }
+
+    /**
+     * Removes a channel from the filter list for a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param channelId The ID of the channel to remove from the filter list
+     */
+    suspend fun removeFilteredChannel(guildId: Long, channelId: Long) {
+        newSuspendedTransaction {
+            LevelingFilteredChannels.deleteWhere {
+                (LevelingFilteredChannels.guildId eq guildId) and (LevelingFilteredChannels.channelId eq channelId)
+            }
+        }
+
+        // Invalidate cache
+        redisClient.delete("filter:channel:$guildId:$channelId")
+        logger.info { "Removed channel $channelId from filter list for guild $guildId" }
+    }
+
+    /**
+     * Adds a role to the filter list for a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param roleId The ID of the role to add to the filter list
+     */
+    suspend fun addFilteredRole(guildId: Long, roleId: Long) {
+        newSuspendedTransaction {
+            val exists = LevelingFilteredRoles
+                .selectAll()
+                .where(LevelingFilteredRoles.guildId eq guildId and (LevelingFilteredRoles.roleId eq roleId))
+                .count() > 0
+
+            if (!exists) {
+                LevelingFilteredRoles.insert {
+                    it[LevelingFilteredRoles.guildId] = guildId
+                    it[LevelingFilteredRoles.roleId] = roleId
+                }
+                logger.info { "Added role $roleId to filter list for guild $guildId" }
+            }
+        }
+
+        // Invalidate all role-related caches for this guild
+        dropAllFilteredRoleCaches(guildId)
+    }
+
+    /**
+     * Removes a role from the filter list for a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param roleId The ID of the role to remove from the filter list
+     */
+    suspend fun removeFilteredRole(guildId: Long, roleId: Long) {
+        newSuspendedTransaction {
+            LevelingFilteredRoles.deleteWhere {
+                (LevelingFilteredRoles.guildId eq guildId) and (LevelingFilteredRoles.roleId eq roleId)
+            }
+        }
+
+        // Invalidate all role-related caches for this guild
+        dropAllFilteredRoleCaches(guildId)
+        logger.info { "Removed role $roleId from filter list for guild $guildId" }
+    }
 }

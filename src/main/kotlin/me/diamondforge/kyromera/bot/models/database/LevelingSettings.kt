@@ -1,5 +1,6 @@
 package me.diamondforge.kyromera.bot.models.database
 
+import me.diamondforge.kyromera.bot.enums.FilterMode
 import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import org.jetbrains.exposed.sql.Table
 
@@ -14,7 +15,10 @@ object LevelingSettings : Table("leveling_settings") {
     val levelupMessageReward = text("levelup_message_reward").nullable()
     val retainRoles = bool("retain_roles").default(false)
     val lastRecalc = long("last_recalc").default(0)
-    val whitelistMode = bool("whitelist_mode").default(false)
+    val whitelistMode = bool("whitelist_mode").default(false) // Deprecated, use filterMode instead
+    val filterMode = varchar("filter_mode", 16).default(FilterMode.BLACKLIST.value).check {
+        it inList FilterMode.entries.map { mode -> mode.value }
+    }
     val levelupAnnounceMode = varchar("levelup_announce_mode", 16).default(LevelUpAnnounceMode.CURRENT.value).check {
         it inList LevelUpAnnounceMode.entries.map { mode -> mode.value }
     }

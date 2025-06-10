@@ -2,9 +2,9 @@ package me.diamondforge.kyromera.bot.models.database
 
 import org.jetbrains.exposed.sql.Table
 
-object LevelingWhitelistedRoles : Table("leveling_whitelisted_roles") {
-    val guildId = long("guildid")
-    val roleId = long("roleid")
-
-    override val primaryKey = PrimaryKey(guildId, roleId)
-}
+/**
+ * Legacy model for backward compatibility.
+ * @deprecated Use LevelingFilteredRoles instead
+ */
+@Deprecated("Use LevelingFilteredRoles instead", ReplaceWith("LevelingFilteredRoles"))
+typealias LevelingWhitelistedRoles = LevelingFilteredRoles

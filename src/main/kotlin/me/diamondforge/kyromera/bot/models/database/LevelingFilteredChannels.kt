@@ -14,10 +14,3 @@ object LevelingFilteredChannels : Table("leveling_filtered_channels") {
 
     override val primaryKey = PrimaryKey(guildId, channelId)
 }
-
-/**
- * Legacy model for backward compatibility.
- * @deprecated Use LevelingFilteredChannels instead
- */
-@Deprecated("Use LevelingFilteredChannels instead", ReplaceWith("LevelingFilteredChannels"))
-typealias LevelingWhitelistedChannels = LevelingFilteredChannels
