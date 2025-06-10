@@ -1854,12 +1854,12 @@ class LevelService(
     /**
      * Gets the filter mode for a guild.
      *
-     * This method retrieves the filter mode (blacklist or whitelist) from the database.
-     * In blacklist mode, all channels/roles are allowed except those in the filter list.
-     * In whitelist mode, only channels/roles in the filter list are allowed.
+     * This method retrieves the filter mode (denylist or allowlist) from the database.
+     * In denylist mode, all channels/roles are allowed except those in the filter list.
+     * In allowlist mode, only channels/roles in the filter list are allowed.
      *
      * @param guildId The ID of the guild to get the filter mode for
-     * @return The FilterMode (BLACKLIST or WHITELIST)
+     * @return The FilterMode (DENYLIST or ALLOWLIST)
      */
     suspend fun getFilterMode(guildId: Long): FilterMode {
         val cacheKey = "filter:mode:$guildId"
@@ -1876,7 +1876,7 @@ class LevelService(
                 .selectAll()
                 .where(LevelingSettings.guildId eq guildId)
                 .map { it[LevelingSettings.filterMode] }
-                .firstOrNull() ?: FilterMode.BLACKLIST.value
+                .firstOrNull() ?: FilterMode.DENYLIST.value
         }
 
         redisClient.setWithExpiry(cacheKey, mode, 4.hours.inWholeSeconds)
@@ -1889,7 +1889,7 @@ class LevelService(
      * Sets the filter mode for a guild.
      *
      * @param guildId The ID of the guild to set the filter mode for
-     * @param mode The FilterMode to set (BLACKLIST or WHITELIST)
+     * @param mode The FilterMode to set (DENYLIST or ALLOWLIST)
      */
     suspend fun setFilterMode(guildId: Long, mode: FilterMode) {
         val cacheKey = "filter:mode:$guildId"
@@ -1904,13 +1904,13 @@ class LevelService(
                 LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
                     it[filterMode] = mode.value
                     // For backward compatibility
-                    it[whitelistMode] = mode == FilterMode.WHITELIST
+                    it[whitelistMode] = mode == FilterMode.ALLOWLIST
                 }
             } else {
                 LevelingSettings.insert {
                     it[LevelingSettings.guildId] = guildId
                     it[filterMode] = mode.value
-                    it[whitelistMode] = mode == FilterMode.WHITELIST
+                    it[whitelistMode] = mode == FilterMode.ALLOWLIST
                 }
             }
         }
@@ -1982,11 +1982,11 @@ class LevelService(
                 .count() > 0
         }
 
-        // In blacklist mode, channels in the filter list are NOT allowed
-        // In whitelist mode, ONLY channels in the filter list are allowed
+        // In denylist mode, channels in the filter list are NOT allowed
+        // In allowlist mode, ONLY channels in the filter list are allowed
         val isAllowed = when (filterMode) {
-            FilterMode.BLACKLIST -> !isInFilterList
-            FilterMode.WHITELIST -> isInFilterList
+            FilterMode.DENYLIST -> !isInFilterList
+            FilterMode.ALLOWLIST -> isInFilterList
         }
 
         redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
@@ -2006,7 +2006,7 @@ class LevelService(
         if (roleIds.isEmpty()) {
             // If the user has no roles, use the default behavior based on filter mode
             val filterMode = getFilterMode(guildId)
-            return filterMode == FilterMode.BLACKLIST
+            return filterMode == FilterMode.DENYLIST
         }
 
         // Create a cache key based on guild ID and role IDs
@@ -2034,11 +2034,11 @@ class LevelService(
         // Check if any of the user's roles are in the filter list
         val hasFilteredRole = roleIds.any { it in filteredRoles }
 
-        // In blacklist mode, users with roles in the filter list are NOT allowed
-        // In whitelist mode, ONLY users with roles in the filter list are allowed
+        // In denylist mode, users with roles in the filter list are NOT allowed
+        // In allowlist mode, ONLY users with roles in the filter list are allowed
         val isAllowed = when (filterMode) {
-            FilterMode.BLACKLIST -> !hasFilteredRole
-            FilterMode.WHITELIST -> hasFilteredRole
+            FilterMode.DENYLIST -> !hasFilteredRole
+            FilterMode.ALLOWLIST -> hasFilteredRole
         }
 
         // Cache the result

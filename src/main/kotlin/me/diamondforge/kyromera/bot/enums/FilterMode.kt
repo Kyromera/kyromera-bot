@@ -8,43 +8,43 @@ package me.diamondforge.kyromera.bot.enums
  */
 enum class FilterMode(val value: String) {
     /**
-     * Blacklist mode - XP is awarded in all channels/roles EXCEPT those in the filter list.
+     * Denylist mode - XP is awarded in all channels/roles EXCEPT those in the filter list.
      * This is the default mode.
      */
-    BLACKLIST("blacklist"),
+    DENYLIST("denylist"),
 
     /**
-     * Whitelist mode - XP is ONLY awarded in channels/roles that are in the filter list.
+     * Allowlist mode - XP is ONLY awarded in channels/roles that are in the filter list.
      */
-    WHITELIST("whitelist");
+    ALLOWLIST("allowlist");
 
     companion object {
         /**
          * Converts a string value to the corresponding enum value.
          *
          * @param value The string value to convert
-         * @return The corresponding enum value, or BLACKLIST if the value is not recognized
+         * @return The corresponding enum value, or DENYLIST if the value is not recognized
          */
         fun fromString(value: String): FilterMode {
-            return values().find { it.value == value.lowercase() } ?: BLACKLIST
+            return values().find { it.value == value.lowercase() } ?: DENYLIST
         }
     }
 
     /**
-     * Checks if the mode is blacklist.
+     * Checks if the mode is denylist.
      *
-     * @return True if the mode is blacklist, false otherwise
+     * @return True if the mode is denylist, false otherwise
      */
-    fun isBlacklist(): Boolean {
-        return this == BLACKLIST
+    fun isDenylist(): Boolean {
+        return this == DENYLIST
     }
 
     /**
-     * Checks if the mode is whitelist.
+     * Checks if the mode is allowlist.
      *
-     * @return True if the mode is whitelist, false otherwise
+     * @return True if the mode is allowlist, false otherwise
      */
-    fun isWhitelist(): Boolean {
-        return this == WHITELIST
+    fun isAllowlist(): Boolean {
+        return this == ALLOWLIST
     }
 }
