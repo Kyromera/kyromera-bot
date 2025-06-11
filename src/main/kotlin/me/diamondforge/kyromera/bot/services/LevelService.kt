@@ -1852,6 +1852,14 @@ class LevelService(
     }
 
     /**
+     * Extension function to get the experience of a member in a specific guild
+     * Calls the getExperience function under the hood.
+     */
+    suspend fun Member.getExperience(guildId: Long): Experience {
+        return getExperience(guildId, this.idLong)
+    }
+
+    /**
      * Gets the filter mode for a guild.
      *
      * This method retrieves the filter mode (denylist or allowlist) from the database.
