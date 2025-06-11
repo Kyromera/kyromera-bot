@@ -1,6 +1,6 @@
 package me.diamondforge.kyromera.bot.models
 
-data class Rank(
+data class Experience(
     val userId: Long,
     val guildId: Long,
     val level: Int,

@@ -17,7 +17,7 @@ import me.diamondforge.kyromera.bot.enums.FilterMode
 import me.diamondforge.kyromera.bot.enums.LevelUpAnnounceMode
 import me.diamondforge.kyromera.bot.enums.XpRewardType
 import me.diamondforge.kyromera.bot.models.CachedXp
-import me.diamondforge.kyromera.bot.models.Rank
+import me.diamondforge.kyromera.bot.models.Experience
 import me.diamondforge.kyromera.bot.models.RewardRole
 import me.diamondforge.kyromera.bot.models.RoleMultiplier
 import me.diamondforge.kyromera.bot.models.XpMultiplier
@@ -1816,9 +1816,9 @@ class LevelService(
      *
      * @param guildId The ID of the guild in which the user's rank should be determined.
      * @param userId The ID of the user whose rank is being retrieved.
-     * @return A [Rank] object containing the user's rank, XP, level, and associated IDs.
+     * @return A [Experience] object containing the user's rank, XP, level, and associated IDs.
      */
-    suspend fun getRank(guildId: Long, userId: Long): Rank = newSuspendedTransaction {
+    suspend fun getExperience(guildId: Long, userId: Long): Experience = newSuspendedTransaction {
         val userRow = LevelingUsers
             .selectAll()
             .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.userId eq userId) }
@@ -1842,7 +1842,7 @@ class LevelService(
             .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
             .count()
 
-        Rank(
+        Experience(
             userId = userId,
             guildId = guildId,
             level = levelAtXp(userXp),
