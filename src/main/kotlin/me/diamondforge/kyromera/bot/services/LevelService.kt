@@ -1797,7 +1797,7 @@ class LevelService(
                         stackRoleMultipliers = it[LevelingSettings.stackRoleMultipliers]
                     )
                 }
-                .firstOrNull() ?: XpMultiplier(guildId, 1.0, 1.0,)
+                .firstOrNull() ?: XpMultiplier(guildId)
         }
         logger.trace { "Retrieved XP multiplier for guild $guildId: $multiplier" }
 
