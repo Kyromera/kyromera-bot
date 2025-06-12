@@ -69,10 +69,9 @@ if (tag != null) {
     println("Using fallback version: $version")
 }
 
-
-
 repositories {
     mavenCentral()
+    maven("https://jitpack.io")
 }
 
 val exposedVersion = "0.61.0"
@@ -109,6 +108,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
+    implementation("com.github.Kyromera:levelcard-lib:v1.0.0")
 
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-x86_64")
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-aarch_64")
