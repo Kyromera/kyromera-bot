@@ -85,7 +85,7 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.18")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("org.postgresql:postgresql:42.7.6")
+    implementation("org.postgresql:postgresql:42.7.7")
     implementation("net.dv8tion:JDA:5.6.1")
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
     implementation("org.flywaydb:flyway-core:11.9.1")
