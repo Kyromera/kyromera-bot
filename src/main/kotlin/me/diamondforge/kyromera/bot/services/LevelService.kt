@@ -773,7 +773,6 @@ class LevelService(
      * @return A Pair containing the minimum and maximum XP values for the level
      */
     fun MinAndMaxXpForLevel(level: Int): Pair<Int, Int> {
-        if (level <= 0) return Pair(0, 0)
 
         val currentXp = xpForLevel(level)
         val nextXp = xpForLevel(level + 1)
