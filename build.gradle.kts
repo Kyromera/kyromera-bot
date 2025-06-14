@@ -75,7 +75,7 @@ repositories {
 }
 
 val exposedVersion = "0.61.0"
-val ktorVersion = "3.1.3"
+val ktorVersion = "3.2.0"
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
@@ -108,7 +108,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
-    implementation("com.github.Kyromera:levelcard-lib:1.1.1")
+    implementation("com.github.Kyromera:levelcard-lib:1.2.0")
 
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-x86_64")
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-aarch_64")
