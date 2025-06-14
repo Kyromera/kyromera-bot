@@ -2,31 +2,28 @@ package me.diamondforge.kyromera.bot.commands
 
 
 import dev.minn.jda.ktx.coroutines.await
-import dev.minn.jda.ktx.messages.Embed
 import dev.minn.jda.ktx.messages.MessageCreate
-import dev.minn.jda.ktx.messages.send
 import io.github.freya022.botcommands.api.commands.annotations.Command
 import io.github.freya022.botcommands.api.commands.application.provider.GlobalApplicationCommandManager
 import io.github.freya022.botcommands.api.commands.application.provider.GlobalApplicationCommandProvider
 import io.github.freya022.botcommands.api.commands.application.slash.GuildSlashEvent
 import io.github.freya022.botcommands.api.core.BContext
+import io.github.freya022.botcommands.api.core.entities.InputUser
+import io.github.freya022.botcommands.api.core.entities.asInputUser
 import io.github.oshai.kotlinlogging.KotlinLogging
 import me.diamondforge.kyromera.bot.services.LevelService
 import me.diamondforge.kyromera.levelcardlib.wrapper.createLevelCard
-import net.dv8tion.jda.api.JDAInfo
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.interactions.components.buttons.Button
+import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.utils.FileUpload
-import net.dv8tion.jda.api.utils.TimeFormat
 import java.awt.image.BufferedImage
 import java.io.File
-import java.lang.management.ManagementFactory
 
 // some test
 private val logger = KotlinLogging.logger { }
 
 @Command
-class test(
+class RankCommand(
     private val context: BContext,
     private val levelService: LevelService
 
@@ -34,21 +31,25 @@ class test(
     ) : GlobalApplicationCommandProvider {
     suspend fun onCommand(
         event: GuildSlashEvent,
+        user: InputUser?
     ) {
         event.deferReply().await()
-        val userexperience = levelService.getExperience(event.user.idLong, event.guild.idLong)
-        val (min, max) = levelService.MinAndMaxXpForLevel(userexperience.level)
-        val card = event.user.createLevelCard()
-            .level(userexperience.level)
-            .xp(min, max, userexperience.xp)
-            .rank(userexperience.rank.toInt())
+        val target = user ?: event.user
+        val currtime = System.currentTimeMillis()
+        val userExperience = levelService.getExperience(event.guild.idLong, target.idLong)
+        var (min, max) = levelService.MinAndMaxXpForLevel(userExperience.level)
+        max += 1
+        val card = target.asInputUser().createLevelCard()
+            .level(userExperience.level)
+            .xp(min, max, userExperience.xp)
+            .rank(userExperience.rank.toInt())
             .build().toFile()
-        val fu = FileUpload.fromData(card, "levelcard.png")
-        val msg = MessageCreate { files += fu }
-        
-        event.channel.sendMessage(msg).queue()
+        val fileUpload = FileUpload.fromData(card, "levelcard.png")
+        val messageData = MessageCreate { files += fileUpload }
+        logger.trace { "Level card generated in ${System.currentTimeMillis() - currtime}ms for user ${target.id} (${target.name})" }
+        event.hook.sendMessage(messageData).await()
     }
-    
+
     fun BufferedImage.toFile(): File {
         val file = File.createTempFile("image", ".png")
         javax.imageio.ImageIO.write(this, "png", file)
@@ -56,11 +57,14 @@ class test(
     }
 
     override fun declareGlobalApplicationCommands(manager: GlobalApplicationCommandManager) {
-        manager.slashCommand("test", function = ::onCommand) {
-            description = "test"
+        manager.slashCommand("rank", function = ::onCommand) {
+            description = "Show Level Card for a user."
 
             botPermissions += Permission.MESSAGE_SEND
             botPermissions += Permission.MESSAGE_EMBED_LINKS
+            option("user", "user") {
+                description = "The User to show the level card for. Defaults to yourself if not specified."
+            }
         }
     }
 }
