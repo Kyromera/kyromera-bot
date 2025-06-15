@@ -14,10 +14,12 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import me.diamondforge.kyromera.bot.services.LevelService
 import me.diamondforge.kyromera.levelcardlib.wrapper.createLevelCard
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.utils.FileUpload
 import java.awt.image.BufferedImage
-import java.io.File
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import javax.imageio.ImageIO
+
 
 // some test
 private val logger = KotlinLogging.logger { }
@@ -43,18 +45,22 @@ class RankCommand(
             .level(userExperience.level)
             .xp(min, max, userExperience.xp)
             .rank(userExperience.rank.toInt())
-            .build().toFile()
+            .build().toByteArray("png")
         val fileUpload = FileUpload.fromData(card, "levelcard.png")
         val messageData = MessageCreate { files += fileUpload }
         logger.trace { "Level card generated in ${System.currentTimeMillis() - currtime}ms for user ${target.id} (${target.name})" }
         event.hook.sendMessage(messageData).await()
     }
 
-    fun BufferedImage.toFile(): File {
-        val file = File.createTempFile("image", ".png")
-        javax.imageio.ImageIO.write(this, "png", file)
-        return file
+    @Throws(IOException::class)
+    fun BufferedImage.toByteArray(formatName: String): ByteArray {
+        val baos = ByteArrayOutputStream()
+        ImageIO.write(this, formatName, baos)
+        baos.flush()
+        baos.close()
+        return baos.toByteArray()
     }
+    
 
     override fun declareGlobalApplicationCommands(manager: GlobalApplicationCommandManager) {
         manager.slashCommand("rank", function = ::onCommand) {
