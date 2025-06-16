@@ -2,7 +2,7 @@ package me.diamondforge.kyromera.bot.configuration
 import me.diamondforge.kyromera.levelcardlib.LayoutConfig
 
 object LevelCardLayoutConfig {
-    private const val TEXTOFFSET = 5
+    private const val TEXTOFFSET = 15
     val layout = LayoutConfig.Builder()
         .usernameOffset(TEXTOFFSET)
         .rankLevelOffset(TEXTOFFSET)
