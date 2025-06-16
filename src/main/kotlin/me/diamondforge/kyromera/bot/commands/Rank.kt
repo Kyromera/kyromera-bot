@@ -1,7 +1,6 @@
 package me.diamondforge.kyromera.bot.commands
 
 
-import dev.minn.jda.ktx.coroutines.await
 import dev.minn.jda.ktx.messages.MessageCreate
 import io.github.freya022.botcommands.api.commands.annotations.Command
 import io.github.freya022.botcommands.api.commands.application.provider.GlobalApplicationCommandManager
@@ -9,21 +8,14 @@ import io.github.freya022.botcommands.api.commands.application.provider.GlobalAp
 import io.github.freya022.botcommands.api.commands.application.slash.GuildSlashEvent
 import io.github.freya022.botcommands.api.core.BContext
 import io.github.freya022.botcommands.api.core.entities.InputUser
-import io.github.freya022.botcommands.api.core.entities.asInputUser
 import io.github.oshai.kotlinlogging.KotlinLogging
-import me.diamondforge.kyromera.bot.configuration.LayoutConfig.layout
+import me.diamondforge.kyromera.bot.configuration.LevelCardLayoutConfig.layout
 import me.diamondforge.kyromera.bot.services.LevelService
-import me.diamondforge.kyromera.levelcardlib.CardConfiguration
-import me.diamondforge.kyromera.levelcardlib.LevelCardDrawer
+import me.diamondforge.kyromera.levelcardlib.wrapper.JDALevelCard
 import me.diamondforge.kyromera.levelcardlib.wrapper.createLevelCard
 import me.diamondforge.kyromera.levelcardlib.wrapper.toByteArray
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.utils.FileUpload
-import org.jetbrains.kotlin.konan.file.File
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import java.io.IOException
-import javax.imageio.ImageIO
 
 
 // some test
@@ -45,7 +37,7 @@ class RankCommand(
         val currtime = System.currentTimeMillis()
         val userExperience = levelService.getExperience(event.guild.idLong, target.idLong)
         val (min, max) = levelService.MinAndMaxXpForLevel(userExperience.level)
-        val card = target.createLevelCard()
+        val card = JDALevelCard.Builder(target)
             .xp(min, max, userExperience.xp)
             .rank(userExperience.rank.toInt())
             .layoutConfig(layout)
