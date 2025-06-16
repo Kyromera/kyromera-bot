@@ -11,10 +11,15 @@ import io.github.freya022.botcommands.api.core.BContext
 import io.github.freya022.botcommands.api.core.entities.InputUser
 import io.github.freya022.botcommands.api.core.entities.asInputUser
 import io.github.oshai.kotlinlogging.KotlinLogging
+import me.diamondforge.kyromera.bot.configuration.LayoutConfig.layout
 import me.diamondforge.kyromera.bot.services.LevelService
+import me.diamondforge.kyromera.levelcardlib.CardConfiguration
+import me.diamondforge.kyromera.levelcardlib.LevelCardDrawer
 import me.diamondforge.kyromera.levelcardlib.wrapper.createLevelCard
+import me.diamondforge.kyromera.levelcardlib.wrapper.toByteArray
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.utils.FileUpload
+import org.jetbrains.kotlin.konan.file.File
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -35,31 +40,22 @@ class RankCommand(
         event: GuildSlashEvent,
         user: InputUser?
     ) {
-        event.deferReply().await()
+        event.deferReply().queue()
         val target = user ?: event.user
         val currtime = System.currentTimeMillis()
         val userExperience = levelService.getExperience(event.guild.idLong, target.idLong)
-        var (min, max) = levelService.MinAndMaxXpForLevel(userExperience.level)
-        max += 1
-        val card = target.asInputUser().createLevelCard()
-            .level(userExperience.level)
+        val (min, max) = levelService.MinAndMaxXpForLevel(userExperience.level)
+        val card = target.createLevelCard()
             .xp(min, max, userExperience.xp)
             .rank(userExperience.rank.toInt())
-            .build().toByteArray("png")
+            .layoutConfig(layout)
+            .build().toByteArray()
         val fileUpload = FileUpload.fromData(card, "levelcard.png")
         val messageData = MessageCreate { files += fileUpload }
         logger.trace { "Level card generated in ${System.currentTimeMillis() - currtime}ms for user ${target.id} (${target.name})" }
-        event.hook.sendMessage(messageData).await()
+        event.hook.sendMessage(messageData).queue()
     }
-
-    @Throws(IOException::class)
-    fun BufferedImage.toByteArray(formatName: String): ByteArray {
-        val baos = ByteArrayOutputStream()
-        ImageIO.write(this, formatName, baos)
-        baos.flush()
-        baos.close()
-        return baos.toByteArray()
-    }
+    
     
 
     override fun declareGlobalApplicationCommands(manager: GlobalApplicationCommandManager) {
