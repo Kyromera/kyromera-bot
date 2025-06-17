@@ -26,6 +26,7 @@ import me.diamondforge.kyromera.bot.models.database.LevelingFilteredRoles
 import me.diamondforge.kyromera.bot.models.database.LevelingRoles
 import me.diamondforge.kyromera.bot.models.database.LevelingSettings
 import me.diamondforge.kyromera.bot.models.database.LevelingUsers
+import me.diamondforge.mee6extract.Mee6XpClient
 import net.dv8tion.jda.api.entities.Member
 import net.dv8tion.jda.api.entities.Message.MentionType
 import net.dv8tion.jda.api.entities.Role
@@ -48,6 +49,7 @@ import kotlin.time.Duration.Companion.seconds
 
 typealias XpPoints = Int
 typealias Level = Int
+typealias Result = Pair<Boolean, String>
 
 
 private val logger = KotlinLogging.logger {}
@@ -2131,4 +2133,38 @@ class LevelService(
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
     }
+    
+    suspend fun importMee6Data(guildId: Long) : Result {
+        val client = Mee6XpClient()
+
+        val allUsers = client.getAllUsers(guildId)
+        
+        if (allUsers.isEmpty()) {
+            logger.warn { "No users found in Mee6 data for guild $guildId" }
+            return Result(false, "No users found in Mee6 data for guild $guildId" )
+        }
+        resetLevelingProgressionsForGuild(guildId)
+        logger.info { "Importing ${allUsers.size} users from Mee6 data for guild $guildId" }
+        var successCount = 0
+        newSuspendedTransaction {
+            allUsers.forEach { user ->
+                LevelingUsers.insert {
+                    it[LevelingUsers.guildId] = guildId
+                    it[LevelingUsers.userId] = user.id
+                    it[LevelingUsers.xp] = user.totalXp.toInt()
+                    it[LevelingUsers.level] = user.level
+                }
+                successCount++
+            }
+        }
+        logger.info { "Successfully imported $successCount users from Mee6 data for guild $guildId" }
+        return Result(true, "Successfully imported $successCount users from Mee6 data for guild $guildId")
+    }
+    
+    suspend fun resetLevelingProgressionsForGuild(guildId: Long) {
+        newSuspendedTransaction {
+            LevelingUsers.deleteWhere { LevelingUsers.guildId eq guildId }
+        }
+    }
+    
 }

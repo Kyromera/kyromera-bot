@@ -110,6 +110,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
     implementation("com.github.Kyromera:levelcard-lib:bd1b074274")
+    implementation("com.github.Kyromera:mee6extract:1.0.1")
 
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-x86_64")
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-aarch_64")
