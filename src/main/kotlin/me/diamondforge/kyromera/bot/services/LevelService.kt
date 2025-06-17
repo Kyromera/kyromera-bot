@@ -2156,8 +2156,8 @@ class LevelService(
                 }
                 successCount++
             }
+            logger.info { "Successfully imported $successCount users from Mee6 data for guild $guildId" }
         }
-        logger.info { "Successfully imported $successCount users from Mee6 data for guild $guildId" }
         return Result(true, "Successfully imported $successCount users from Mee6 data for guild $guildId")
     }
     
