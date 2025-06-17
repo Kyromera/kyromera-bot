@@ -2133,12 +2133,12 @@ class LevelService(
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
     }
-    
+
     suspend fun importMee6Data(guildId: Long) : Result {
         val client = Mee6XpClient()
 
         val allUsers = client.getAllUsers(guildId)
-        
+
         if (allUsers.isEmpty()) {
             logger.warn { "No users found in Mee6 data for guild $guildId" }
             return Result(false, "No users found in Mee6 data for guild $guildId" )
@@ -2160,11 +2160,71 @@ class LevelService(
         }
         return Result(true, "Successfully imported $successCount users from Mee6 data for guild $guildId")
     }
-    
+
     suspend fun resetLevelingProgressionsForGuild(guildId: Long) {
         newSuspendedTransaction {
             LevelingUsers.deleteWhere { LevelingUsers.guildId eq guildId }
         }
     }
-    
+
+    /**
+     * Gets a paginated leaderboard of users sorted by XP for a guild.
+     *
+     * @param guildId The ID of the guild
+     * @param page The page number (1-based)
+     * @param pageSize The number of users per page
+     * @return A list of Experience objects for the users on the requested page
+     */
+    suspend fun getLeaderboard(guildId: Long, page: Int = 1, pageSize: Int = 10): List<Experience> = newSuspendedTransaction {
+        val validPage = if (page < 1) 1 else page
+        val validPageSize = when {
+            pageSize < 1 -> 10
+            pageSize > 100 -> 100
+            else -> pageSize
+        }
+
+        val offset = (validPage - 1) * validPageSize
+
+        val query = LevelingUsers
+            .selectAll()
+            .where { LevelingUsers.guildId eq guildId }
+
+        val sortedQuery = query.orderBy(LevelingUsers.xp to org.jetbrains.exposed.sql.SortOrder.DESC)
+
+        val users = sortedQuery
+            .limit(validPageSize)
+            .drop(offset.toInt())
+            .map { row ->
+                val userXp = row[LevelingUsers.xp]
+                val userId = row[LevelingUsers.userId]
+
+                val rank = LevelingUsers
+                    .selectAll()
+                    .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
+                    .count() + 1
+
+                Experience(
+                    userId = userId,
+                    guildId = guildId,
+                    level = levelAtXp(userXp),
+                    xp = userXp,
+                    rank = rank
+                )
+            }
+
+        users
+    }
+
+    /**
+     * Gets the total number of users with XP in a guild.
+     *
+     * @param guildId The ID of the guild
+     * @return The total number of users
+     */
+    suspend fun getLeaderboardUserCount(guildId: Long): Long = newSuspendedTransaction {
+        LevelingUsers
+            .selectAll()
+            .where { LevelingUsers.guildId eq guildId }
+            .count()
+    }
 }
