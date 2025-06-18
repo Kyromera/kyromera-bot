@@ -2194,7 +2194,7 @@ class LevelService(
 
         val users = sortedQuery
             .limit(validPageSize)
-            .drop(offset.toInt())
+            .drop(offset)
             .map { row ->
                 val userXp = row[LevelingUsers.xp]
                 val userId = row[LevelingUsers.userId]
