@@ -33,6 +33,7 @@ import net.dv8tion.jda.api.entities.Role
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
+import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -2189,7 +2190,7 @@ class LevelService(
             .selectAll()
             .where { LevelingUsers.guildId eq guildId }
 
-        val sortedQuery = query.orderBy(LevelingUsers.xp to org.jetbrains.exposed.sql.SortOrder.DESC)
+        val sortedQuery = query.orderBy(LevelingUsers.xp to SortOrder.DESC)
 
         val users = sortedQuery
             .limit(validPageSize)
