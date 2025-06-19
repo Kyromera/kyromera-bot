@@ -231,10 +231,10 @@ class LevelService(
     private suspend fun startCacheFlushWorker() {
         logger.info { "Starting XP cache flush worker with interval: $cacheFlushInterval" }
 
-        // Outer loop to ensure the worker restarts if it fails
+        
         while (true) {
             try {
-                // Inner loop for the actual work
+                
                 while (true) {
                     try {
                         flushCacheToDatabase()
@@ -246,7 +246,7 @@ class LevelService(
                 }
             } catch (e: Exception) {
                 logger.error(e) { "Critical error in XP cache flush worker, restarting worker" }
-                delay(30.seconds) // Longer delay before restarting the worker
+                delay(30.seconds) 
             }
         }
     }
@@ -502,7 +502,7 @@ class LevelService(
             return null
         }
 
-        // Check if the channel is allowed based on filter settings
+        
         if (channelId != null) {
             val isChannelAllowed = isChannelAllowed(guildId, channelId)
             if (!isChannelAllowed) {
@@ -511,7 +511,7 @@ class LevelService(
             }
         }
 
-        // Check if the user's roles are allowed based on filter settings
+        
         if (roleIds != null) {
             val isRoleAllowed = isRoleAllowed(guildId, roleIds)
             if (!isRoleAllowed) {
@@ -534,14 +534,14 @@ class LevelService(
 
         val baseXp = getBaseXp(type)
 
-        // Get role multiplier if roleIds are provided
+        
         val roleMultiplier = if (roleIds != null && roleIds.isNotEmpty()) {
             getRoleMultiplier(guildId, roleIds)
         } else {
             RoleMultiplier.DEFAULT_MULTIPLIER
         }
 
-        // Apply both activity type multiplier and role multiplier
+        
         val activityMultiplier = when (type) {
             XpRewardType.Message -> multiplier.textMultiplier
             XpRewardType.Voice -> multiplier.vcMultiplier
@@ -854,7 +854,7 @@ class LevelService(
         val userId = createEvent.author.idLong
         val channelId = createEvent.channel.idLong
 
-        // Get the member's roles
+        
         val member = createEvent.member
         val roleIds = member?.roles?.map { it.idLong } ?: emptyList()
 
@@ -1655,13 +1655,13 @@ class LevelService(
 
         try {
             newSuspendedTransaction {
-                // Check if the role multiplier already exists
+                
                 val existingMultiplier = LevelingRoles.selectAll()
                     .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleId eq roleId) and (LevelingRoles.roleType eq "multiplier"))
                     .singleOrNull()
 
                 if (existingMultiplier != null) {
-                    // Update existing multiplier
+                    
                     LevelingRoles.update({ 
                         (LevelingRoles.guildId eq guildId) and 
                         (LevelingRoles.roleId eq roleId) and 
@@ -1671,7 +1671,7 @@ class LevelService(
                     }
                     logger.debug { "Updated multiplier for role $roleId in guild $guildId to $multiplier" }
                 } else {
-                    // Insert new multiplier
+                    
                     LevelingRoles.insert {
                         it[LevelingRoles.guildId] = guildId
                         it[LevelingRoles.roleId] = roleId
@@ -1712,7 +1712,7 @@ class LevelService(
                 }
             }
 
-            // Invalidate cache
+            
             val cacheKey = "rolemultipliers:$guildId"
             redisClient.delete(cacheKey)
             logger.debug { "Invalidated role multipliers cache for guild $guildId" }
@@ -1752,17 +1752,17 @@ class LevelService(
             return RoleMultiplier.DEFAULT_MULTIPLIER
         }
 
-        // Get the guild's stacking preference
+        
         val multiplierSettings = getXpMultiplier(guildId)
         val stackMultipliers = multiplierSettings.stackRoleMultipliers
 
         return if (stackMultipliers) {
-            // Multiply all role multipliers together
+            
             userRoleMultipliers.fold(RoleMultiplier.DEFAULT_MULTIPLIER) { acc, roleMultiplier ->
                 acc * roleMultiplier.multiplier
             }
         } else {
-            // Use the highest multiplier (original behavior)
+            
             userRoleMultipliers.maxOf { it.multiplier }
         }
     }
@@ -1914,10 +1914,10 @@ class LevelService(
             }
         }
 
-        // Update the filter mode cache
+        
         redisClient.setWithExpiry(cacheKey, mode.value, 4.hours.inWholeSeconds)
 
-        // Invalidate all channel and role filter caches since they depend on the filter mode
+        
         dropAllFilteredChannelCaches(guildId)
         dropAllFilteredRoleCaches(guildId)
 
@@ -1951,7 +1951,7 @@ class LevelService(
             }
         }
 
-        // Invalidate the XP multiplier cache since it includes the stacking preference
+        
         redisClient.delete(cacheKey)
 
         logger.info { "Set role multiplier stacking for guild $guildId to $stackMultipliers and invalidated XP multiplier cache" }
@@ -1981,8 +1981,8 @@ class LevelService(
                 .count() > 0
         }
 
-        // In denylist mode, channels in the filter list are NOT allowed
-        // In allowlist mode, ONLY channels in the filter list are allowed
+        
+        
         val isAllowed = when (filterMode) {
             FilterMode.DENYLIST -> !isInFilterList
             FilterMode.ALLOWLIST -> isInFilterList
@@ -2003,17 +2003,17 @@ class LevelService(
      */
     suspend fun isRoleAllowed(guildId: Long, roleIds: List<Long>): Boolean {
         if (roleIds.isEmpty()) {
-            // If the user has no roles, use the default behavior based on filter mode
+            
             val filterMode = getFilterMode(guildId)
             return filterMode == FilterMode.DENYLIST
         }
 
-        // Create a cache key based on guild ID and role IDs
-        // We need to sort and join the role IDs to ensure consistent cache keys
+        
+        
         val sortedRoleIds = roleIds.sorted().joinToString("-")
         val cacheKey = "filter:role:$guildId:$sortedRoleIds"
 
-        // Check if we have a cached result
+        
         val cachedResult = redisClient.get(cacheKey)?.toBoolean()
         if (cachedResult != null) {
             logger.debug { "Using cached role filter result for roles $roleIds in guild $guildId: $cachedResult" }
@@ -2030,17 +2030,17 @@ class LevelService(
                 .toSet()
         }
 
-        // Check if any of the user's roles are in the filter list
+        
         val hasFilteredRole = roleIds.any { it in filteredRoles }
 
-        // In denylist mode, users with roles in the filter list are NOT allowed
-        // In allowlist mode, ONLY users with roles in the filter list are allowed
+        
+        
         val isAllowed = when (filterMode) {
             FilterMode.DENYLIST -> !hasFilteredRole
             FilterMode.ALLOWLIST -> hasFilteredRole
         }
 
-        // Cache the result
+        
         redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
         logger.debug { "User with roles $roleIds in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, has filtered role: $hasFilteredRole)" }
 
@@ -2069,7 +2069,7 @@ class LevelService(
             }
         }
 
-        // Invalidate cache
+        
         redisClient.delete("filter:channel:$guildId:$channelId")
     }
 
@@ -2086,7 +2086,7 @@ class LevelService(
             }
         }
 
-        // Invalidate cache
+        
         redisClient.delete("filter:channel:$guildId:$channelId")
         logger.info { "Removed channel $channelId from filter list for guild $guildId" }
     }
@@ -2113,7 +2113,7 @@ class LevelService(
             }
         }
 
-        // Invalidate all role-related caches for this guild
+        
         dropAllFilteredRoleCaches(guildId)
     }
 
@@ -2130,7 +2130,7 @@ class LevelService(
             }
         }
 
-        // Invalidate all role-related caches for this guild
+        
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
     }
