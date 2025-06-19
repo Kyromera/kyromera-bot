@@ -7,10 +7,16 @@ import io.lettuce.core.RedisURI
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.async.RedisAsyncCommands
 import io.lettuce.core.codec.StringCodec
+import io.lettuce.core.pubsub.RedisPubSubListener
+import io.lettuce.core.pubsub.StatefulRedisPubSubConnection
 import io.lettuce.core.support.AsyncConnectionPoolSupport
 import io.lettuce.core.support.BoundedAsyncPool
 import io.lettuce.core.support.BoundedPoolConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import me.diamondforge.kyromera.bot.configuration.Config
@@ -29,7 +35,8 @@ class RedisClientProvider(config: Config) {
 
     private val client: RedisClient = RedisClient.create()
     private val json = Json { ignoreUnknownKeys = true }
-
+    private val coroutineScope = CoroutineScope(Dispatchers.Default)
+    private val pubSubConnections = ConcurrentHashMap<String, StatefulRedisPubSubConnection<String, String>>()
 
     private val pool: BoundedAsyncPool<StatefulRedisConnection<String, String>> =
         AsyncConnectionPoolSupport
@@ -42,6 +49,15 @@ class RedisClientProvider(config: Config) {
 
         Runtime.getRuntime().addShutdownHook(Thread {
             runCatching {
+                pubSubConnections.forEach { (channel, connection) ->
+                    try {
+                        connection.closeAsync().toCompletableFuture().join()
+                        logger.info { "Closed Redis Pub/Sub connection for channel: $channel" }
+                    } catch (e: Exception) {
+                        logger.warn(e) { "Error closing Redis Pub/Sub connection for channel: $channel" }
+                    }
+                }
+
                 pool.closeAsync().toCompletableFuture().join()
                 client.shutdownAsync().toCompletableFuture().join()
             }.onSuccess {
@@ -144,4 +160,102 @@ class RedisClientProvider(config: Config) {
         }.onFailure {
             logger.error(it) { "Failed to get expiry for key '$key'" }
         }.getOrNull()
+
+    /**
+     * Subscribes to a Redis channel and executes the provided callback function when a message is received.
+     * 
+     * @param channel The channel to subscribe to
+     * @param callback The function to execute when a message is received
+     * @return True if the subscription was successful, false otherwise
+     */
+    fun subscribe(channel: String, callback: (String) -> Unit): Boolean {
+        return runCatching {
+            if (pubSubConnections.containsKey(channel)) {
+                logger.warn { "Already subscribed to channel: $channel" }
+                return true
+            }
+
+            val pubSubConnection = client.connectPubSub(StringCodec.UTF8, uri)
+            pubSubConnections[channel] = pubSubConnection
+
+            pubSubConnection.addListener(object : RedisPubSubListener<String, String> {
+                override fun message(channel: String, message: String) {
+                    logger.trace { "Received message on channel '$channel': $message" }
+                    coroutineScope.launch {
+                        try {
+                            callback(message)
+                        } catch (e: Exception) {
+                            logger.error(e) { "Error in callback for message on channel '$channel'" }
+                        }
+                    }
+                }
+
+                override fun message(pattern: String, channel: String, message: String) {
+                }
+
+                override fun subscribed(channel: String, count: Long) {
+                    logger.info { "Subscribed to channel: $channel" }
+                }
+
+                override fun psubscribed(pattern: String, count: Long) {
+                }
+
+                override fun unsubscribed(channel: String, count: Long) {
+                    logger.info { "Unsubscribed from channel: $channel" }
+                }
+
+                override fun punsubscribed(pattern: String, count: Long) {
+                }
+            })
+
+            val async = pubSubConnection.async()
+            async.subscribe(channel).toCompletableFuture().join()
+
+            true
+        }.onFailure {
+            logger.error(it) { "Failed to subscribe to channel: $channel" }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Unsubscribes from a Redis channel.
+     * 
+     * @param channel The channel to unsubscribe from
+     * @return True if the unsubscription was successful, false otherwise
+     */
+    fun unsubscribe(channel: String): Boolean {
+        return runCatching {
+            val connection = pubSubConnections[channel] ?: run {
+                logger.warn { "Not subscribed to channel: $channel" }
+                return true
+            }
+
+            connection.async().unsubscribe(channel).toCompletableFuture().join()
+
+            connection.closeAsync().toCompletableFuture().join()
+            pubSubConnections.remove(channel)
+
+            logger.info { "Unsubscribed from channel: $channel" }
+            true
+        }.onFailure {
+            logger.error(it) { "Failed to unsubscribe from channel: $channel" }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Publishes a message to a Redis channel.
+     * 
+     * @param channel The channel to publish to
+     * @param message The message to publish
+     * @return True if the message was published successfully, false otherwise
+     */
+    suspend fun publish(channel: String, message: String): Boolean {
+        return runCatching {
+            withConnection { 
+                it.publish(channel, message).await() >= 0
+            }
+        }.onFailure {
+            logger.error(it) { "Failed to publish message to channel: $channel" }
+        }.getOrDefault(false)
+    }
 }

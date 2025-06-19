@@ -62,6 +62,18 @@ class LevelService(
     private val databaseClient: DatabaseSource,
     private val context: BContext
 ) {
+    
+    companion object {
+        const val CHANNEL_DROP_GUILD_CACHE = "kyromera:levelservice:dropguildcache"
+        const val CHANNEL_GET_GUILD_INFO = "kyromera:levelservice:getguildinfo"
+    }
+
+    
+    private val json = kotlinx.serialization.json.Json { 
+        prettyPrint = false
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     private val cacheFlushInterval = 1.minutes
     private val voiceChannelCheckInterval = 1.minutes
 
@@ -218,6 +230,58 @@ class LevelService(
         KyromeraScope.launch(Dispatchers.IO) {
             startVoiceChannelMonitoringWorker()
         }
+
+        
+        initializeRedisSubscriptions()
+    }
+
+    /**
+     * Initializes Redis Pub/Sub subscriptions for external commands.
+     * 
+     * This method sets up listeners for various Redis channels that allow external
+     * systems to trigger actions in the LevelService, such as dropping guild caches
+     * or retrieving guild information.
+     */
+    private fun initializeRedisSubscriptions() {
+        logger.info { "Initializing Redis Pub/Sub subscriptions for LevelService" }
+
+        
+        redisClient.subscribe(CHANNEL_DROP_GUILD_CACHE) { message ->
+            try {
+                val guildId = message.toLongOrNull()
+                if (guildId != null) {
+                    logger.info { "Received request to drop cache for guild $guildId via Redis Pub/Sub" }
+                    KyromeraScope.launch {
+                        dropGuildCaches(guildId)
+                    }
+                } else {
+                    logger.warn { "Received invalid guild ID in drop cache message: $message" }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Error processing drop guild cache message: $message" }
+            }
+        }
+
+        
+        redisClient.subscribe(CHANNEL_GET_GUILD_INFO) { message ->
+            try {
+                val guildId = message.toLongOrNull()
+                if (guildId != null) {
+                    logger.info { "Received request to get info for guild $guildId via Redis Pub/Sub" }
+                    KyromeraScope.launch {
+                        val responseChannel = "$CHANNEL_GET_GUILD_INFO:response:$guildId"
+                        val guildInfo = getGuildInfo(guildId)
+                        redisClient.publish(responseChannel, guildInfo)
+                    }
+                } else {
+                    logger.warn { "Received invalid guild ID in get guild info message: $message" }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Error processing get guild info message: $message" }
+            }
+        }
+
+        logger.info { "Redis Pub/Sub subscriptions initialized successfully" }
     }
 
     /**
@@ -231,10 +295,10 @@ class LevelService(
     private suspend fun startCacheFlushWorker() {
         logger.info { "Starting XP cache flush worker with interval: $cacheFlushInterval" }
 
-        
+
         while (true) {
             try {
-                
+
                 while (true) {
                     try {
                         flushCacheToDatabase()
@@ -502,7 +566,7 @@ class LevelService(
             return null
         }
 
-        
+
         if (channelId != null) {
             val isChannelAllowed = isChannelAllowed(guildId, channelId)
             if (!isChannelAllowed) {
@@ -511,7 +575,7 @@ class LevelService(
             }
         }
 
-        
+
         if (roleIds != null) {
             val isRoleAllowed = isRoleAllowed(guildId, roleIds)
             if (!isRoleAllowed) {
@@ -534,14 +598,14 @@ class LevelService(
 
         val baseXp = getBaseXp(type)
 
-        
+
         val roleMultiplier = if (roleIds != null && roleIds.isNotEmpty()) {
             getRoleMultiplier(guildId, roleIds)
         } else {
             RoleMultiplier.DEFAULT_MULTIPLIER
         }
 
-        
+
         val activityMultiplier = when (type) {
             XpRewardType.Message -> multiplier.textMultiplier
             XpRewardType.Voice -> multiplier.vcMultiplier
@@ -854,7 +918,7 @@ class LevelService(
         val userId = createEvent.author.idLong
         val channelId = createEvent.channel.idLong
 
-        
+
         val member = createEvent.member
         val roleIds = member?.roles?.map { it.idLong } ?: emptyList()
 
@@ -1214,26 +1278,26 @@ class LevelService(
     suspend fun dropGuildCaches(guildId: Long) {
         logger.info { "Dropping all caches for guild $guildId" }
 
-        // Drop level-up message caches
+        
         dropLevelUpMessageCache(guildId)
         dropLevelUpRewardMessageCache(guildId)
 
-        // Drop announcement mode cache
+        
         dropLevelUpAnnounceModeCache(guildId)
 
-        // Drop reward roles cache
+        
         dropRewardRolesCache(guildId)
 
-        // Drop last message channel cache
+        
         dropLastMessageChannelCache(guildId)
 
-        // Drop XP multiplier cache
+        
         dropXpMultiplierCache(guildId)
 
-        // Drop role multipliers cache
+        
         dropRoleMultipliersCache(guildId)
 
-        // Drop filter-related caches
+        
         dropFilterModeCache(guildId)
         dropAllFilteredChannelCaches(guildId)
         dropAllFilteredRoleCaches(guildId)
@@ -1402,13 +1466,13 @@ class LevelService(
     suspend fun dropUserCaches(guildId: Long, userId: Long) {
         logger.info { "Dropping all caches for user $userId in guild $guildId" }
 
-        // Drop ping enabled cache
+        
         dropPingEnabledCache(guildId, userId)
 
-        // Drop XP runtime cache
+        
         dropXpRuntimeCache(guildId, userId)
 
-        // Drop XP cooldown caches
+        
         val cooldownKeyPattern = "xp:cooldown:$guildId:$userId:*"
         val cooldownKeys = redisClient.getKeysByPattern(cooldownKeyPattern)
         cooldownKeys.forEach { redisClient.delete(it) }
@@ -1655,13 +1719,13 @@ class LevelService(
 
         try {
             newSuspendedTransaction {
-                
+
                 val existingMultiplier = LevelingRoles.selectAll()
                     .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleId eq roleId) and (LevelingRoles.roleType eq "multiplier"))
                     .singleOrNull()
 
                 if (existingMultiplier != null) {
-                    
+
                     LevelingRoles.update({ 
                         (LevelingRoles.guildId eq guildId) and 
                         (LevelingRoles.roleId eq roleId) and 
@@ -1671,7 +1735,7 @@ class LevelService(
                     }
                     logger.debug { "Updated multiplier for role $roleId in guild $guildId to $multiplier" }
                 } else {
-                    
+
                     LevelingRoles.insert {
                         it[LevelingRoles.guildId] = guildId
                         it[LevelingRoles.roleId] = roleId
@@ -1712,7 +1776,7 @@ class LevelService(
                 }
             }
 
-            
+
             val cacheKey = "rolemultipliers:$guildId"
             redisClient.delete(cacheKey)
             logger.debug { "Invalidated role multipliers cache for guild $guildId" }
@@ -1752,17 +1816,17 @@ class LevelService(
             return RoleMultiplier.DEFAULT_MULTIPLIER
         }
 
-        
+
         val multiplierSettings = getXpMultiplier(guildId)
         val stackMultipliers = multiplierSettings.stackRoleMultipliers
 
         return if (stackMultipliers) {
-            
+
             userRoleMultipliers.fold(RoleMultiplier.DEFAULT_MULTIPLIER) { acc, roleMultiplier ->
                 acc * roleMultiplier.multiplier
             }
         } else {
-            
+
             userRoleMultipliers.maxOf { it.multiplier }
         }
     }
@@ -1914,10 +1978,10 @@ class LevelService(
             }
         }
 
-        
+
         redisClient.setWithExpiry(cacheKey, mode.value, 4.hours.inWholeSeconds)
 
-        
+
         dropAllFilteredChannelCaches(guildId)
         dropAllFilteredRoleCaches(guildId)
 
@@ -1951,7 +2015,7 @@ class LevelService(
             }
         }
 
-        
+
         redisClient.delete(cacheKey)
 
         logger.info { "Set role multiplier stacking for guild $guildId to $stackMultipliers and invalidated XP multiplier cache" }
@@ -1981,8 +2045,8 @@ class LevelService(
                 .count() > 0
         }
 
-        
-        
+
+
         val isAllowed = when (filterMode) {
             FilterMode.DENYLIST -> !isInFilterList
             FilterMode.ALLOWLIST -> isInFilterList
@@ -2003,17 +2067,17 @@ class LevelService(
      */
     suspend fun isRoleAllowed(guildId: Long, roleIds: List<Long>): Boolean {
         if (roleIds.isEmpty()) {
-            
+
             val filterMode = getFilterMode(guildId)
             return filterMode == FilterMode.DENYLIST
         }
 
-        
-        
+
+
         val sortedRoleIds = roleIds.sorted().joinToString("-")
         val cacheKey = "filter:role:$guildId:$sortedRoleIds"
 
-        
+
         val cachedResult = redisClient.get(cacheKey)?.toBoolean()
         if (cachedResult != null) {
             logger.debug { "Using cached role filter result for roles $roleIds in guild $guildId: $cachedResult" }
@@ -2030,17 +2094,17 @@ class LevelService(
                 .toSet()
         }
 
-        
+
         val hasFilteredRole = roleIds.any { it in filteredRoles }
 
-        
-        
+
+
         val isAllowed = when (filterMode) {
             FilterMode.DENYLIST -> !hasFilteredRole
             FilterMode.ALLOWLIST -> hasFilteredRole
         }
 
-        
+
         redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
         logger.debug { "User with roles $roleIds in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, has filtered role: $hasFilteredRole)" }
 
@@ -2069,7 +2133,7 @@ class LevelService(
             }
         }
 
-        
+
         redisClient.delete("filter:channel:$guildId:$channelId")
     }
 
@@ -2086,7 +2150,7 @@ class LevelService(
             }
         }
 
-        
+
         redisClient.delete("filter:channel:$guildId:$channelId")
         logger.info { "Removed channel $channelId from filter list for guild $guildId" }
     }
@@ -2113,7 +2177,7 @@ class LevelService(
             }
         }
 
-        
+
         dropAllFilteredRoleCaches(guildId)
     }
 
@@ -2130,9 +2194,105 @@ class LevelService(
             }
         }
 
-        
+
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
+    }
+
+    /**
+     * Retrieves information about a guild from JDA.
+     *
+     * This method collects various pieces of information about a guild, including:
+     * - Basic guild information (name, member count, etc.)
+     * - Guild roles
+     * - Guild channels
+     * - Guild settings from the leveling system
+     *
+     * The information is returned as a JSON string that can be consumed by external systems.
+     *
+     * @param guildId The ID of the guild to get information for
+     * @return A JSON string containing information about the guild
+     */
+    suspend fun getGuildInfo(guildId: Long): String {
+        logger.info { "Retrieving guild info for guild $guildId" }
+
+        try {
+            val guild = context.jda.getGuildById(guildId)
+            if (guild == null) {
+                logger.warn { "Guild $guildId not found in JDA" }
+                return """{"error": "Guild not found", "guildId": $guildId}"""
+            }
+
+            
+
+            
+            val jsonString = kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.json.JsonObject.serializer(),
+                kotlinx.serialization.json.buildJsonObject {
+                    put("id", kotlinx.serialization.json.JsonPrimitive(guild.id))
+                    put("name", kotlinx.serialization.json.JsonPrimitive(guild.name))
+                    put("memberCount", kotlinx.serialization.json.JsonPrimitive(guild.memberCount))
+                    put("ownerId", kotlinx.serialization.json.JsonPrimitive(guild.ownerId))
+
+                    
+                    put("roles", kotlinx.serialization.json.buildJsonArray {
+                        guild.roles.forEach { role ->
+                            add(kotlinx.serialization.json.buildJsonObject {
+                                put("id", kotlinx.serialization.json.JsonPrimitive(role.id))
+                                put("name", kotlinx.serialization.json.JsonPrimitive(role.name))
+                                put("color", kotlinx.serialization.json.JsonPrimitive(role.colorRaw))
+                                put("position", kotlinx.serialization.json.JsonPrimitive(role.position))
+                                put("isHoisted", kotlinx.serialization.json.JsonPrimitive(role.isHoisted))
+                                put("isMentionable", kotlinx.serialization.json.JsonPrimitive(role.isMentionable))
+                            })
+                        }
+                    })
+
+                    
+                    put("channels", kotlinx.serialization.json.buildJsonArray {
+                        guild.channels.forEach { channel ->
+                            add(kotlinx.serialization.json.buildJsonObject {
+                                put("id", kotlinx.serialization.json.JsonPrimitive(channel.id))
+                                put("name", kotlinx.serialization.json.JsonPrimitive(channel.name))
+                                put("type", kotlinx.serialization.json.JsonPrimitive(channel.type.name))
+                            })
+                        }
+                    })
+
+                    
+                    put("levelingSettings", kotlinx.serialization.json.buildJsonObject {
+                        
+                        val xpMultiplier = getXpMultiplier(guildId)
+                        put("textEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textEnabled))
+                        put("textMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textMultiplier))
+                        put("vcEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcEnabled))
+                        put("vcMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcMultiplier))
+                        put("stackRoleMultipliers", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.stackRoleMultipliers))
+
+                        
+                        val filterMode = getFilterMode(guildId)
+                        put("filterMode", kotlinx.serialization.json.JsonPrimitive(filterMode.value))
+
+                        
+                        val rewardRoles = getRewardRoles(guildId)
+                        put("rewardRoles", kotlinx.serialization.json.buildJsonArray {
+                            rewardRoles.forEach { reward ->
+                                add(kotlinx.serialization.json.buildJsonObject {
+                                    put("roleId", kotlinx.serialization.json.JsonPrimitive(reward.roleId.toString()))
+                                    put("level", kotlinx.serialization.json.JsonPrimitive(reward.level))
+                                })
+                            }
+                        })
+                    })
+                }
+            )
+            logger.debug { "Retrieved guild info for guild $guildId: ${jsonString.take(100)}..." }
+
+            return jsonString
+        } catch (e: Exception) {
+            logger.error(e) { "Error retrieving guild info for guild $guildId" }
+            return """{"error": "${e.message}", "guildId": $guildId}"""
+        }
     }
 
     suspend fun importMee6Data(guildId: Long) : Result {
