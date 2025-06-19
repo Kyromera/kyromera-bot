@@ -24,15 +24,12 @@ data class DatabaseConfig(
 
 data class RedisConfig(val host: String, val port: Int, val password: String)
 
-data class RabbitMqConfig(val host: String, val port: Int, val user: String, val password: String)
-
 data class Config(
     val token: String,
     val ownerIds: List<Long>,
     val testGuildIds: List<Long>,
     val databaseConfig: DatabaseConfig,
     val redisConfig: RedisConfig,
-    val rabbitMqConfig: RabbitMqConfig,
 ) {
 
     companion object {
@@ -86,18 +83,11 @@ data class Config(
             val redisPort = System.getenv("REDIS_PORT")?.toIntOrNull() ?: 6379
             val redisPassword = System.getenv("REDIS_PASSWORD") ?: throw IllegalStateException("Missing REDIS_PASSWORD")
             
-            val rabbitMqHost = System.getenv("RABBITMQ_HOST") ?: throw IllegalStateException("Missing RABBITMQ_HOST")
-            val rabbitMqPort = System.getenv("RABBITMQ_PORT")?.toIntOrNull() ?: 5672
-            val rabbitMqUser = System.getenv("RABBITMQ_USER") ?: throw IllegalStateException("Missing RABBITMQ_USER")
-            val rabbitMqPassword = System.getenv("RABBITMQ_PASSWORD") ?: throw IllegalStateException("Missing RABBITMQ_PASSWORD")
-
             val redisConfig = RedisConfig(redisHost, redisPort, redisPassword)
 
             val databaseConfig = DatabaseConfig(dbServer, dbPort, dbName, dbUser, dbPassword)
             
-            val rabbitMqConfig = RabbitMqConfig(rabbitMqHost, rabbitMqPort, rabbitMqUser, rabbitMqPassword)
-
-            return Config(token, ownerIds, testGuildIds, databaseConfig, redisConfig, rabbitMqConfig)
+            return Config(token, ownerIds, testGuildIds, databaseConfig, redisConfig)
         }
     }
 
