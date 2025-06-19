@@ -14,4 +14,10 @@
     "port": 6379,
     "password": "change_this_redis_pw"
   },
+  "rabbitMqConfig": {
+    "host": "localhost", 
+    "port": 5672,
+    "user": "kyromera",
+    "password": "change_this_rabbitmq_password"
+  } 
 }
