@@ -6,5 +6,5 @@ import kotlinx.serialization.Serializable
 data class RewardRole(
     val guildId: Long,
     val roleId: Long,
-    val level: Int
+    val level: Int,
 )

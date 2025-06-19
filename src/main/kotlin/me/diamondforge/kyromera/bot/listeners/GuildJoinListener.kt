@@ -22,7 +22,7 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
  * with default values.
  */
 @BService
-class GuildJoinListener() {
+class GuildJoinListener {
     private val logger = KotlinLogging.logger {}
 
     /**
@@ -63,9 +63,12 @@ class GuildJoinListener() {
         withContext(Dispatchers.IO) {
             try {
                 newSuspendedTransaction {
-                    val exists = LevelingSettings
-                        .selectAll().where { LevelingSettings.guildId eq guildId }
-                        .limit(1).count() > 0
+                    val exists =
+                        LevelingSettings
+                            .selectAll()
+                            .where { LevelingSettings.guildId eq guildId }
+                            .limit(1)
+                            .count() > 0
 
                     if (!exists) {
                         logger.info { "Creating default leveling settings for guild $guildId" }
@@ -92,7 +95,6 @@ class GuildJoinListener() {
                 }
 
                 logger.trace { "Cached guild $guildId initialization status (initialized=true)" }
-
             } catch (e: Exception) {
                 logger.error(e) { "Error initializing leveling settings for guild $guildId" }
             }

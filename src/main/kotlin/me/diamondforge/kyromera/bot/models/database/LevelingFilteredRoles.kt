@@ -4,7 +4,7 @@ import org.jetbrains.exposed.sql.Table
 
 /**
  * Represents the table of filtered roles for the leveling system.
- * 
+ *
  * These roles are either allowlisted (only users with these roles earn XP) or denylisted (all users except those with these roles earn XP)
  * depending on the filter_mode setting in the leveling_settings table.
  */

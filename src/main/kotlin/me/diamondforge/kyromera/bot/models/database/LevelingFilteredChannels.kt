@@ -4,7 +4,7 @@ import org.jetbrains.exposed.sql.Table
 
 /**
  * Represents the table of filtered channels for the leveling system.
- * 
+ *
  * These channels are either allowlisted (only these channels earn XP) or denylisted (all channels except these earn XP)
  * depending on the filter_mode setting in the leveling_settings table.
  */

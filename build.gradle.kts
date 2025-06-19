@@ -29,14 +29,11 @@ tasks.processResources {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-
 tasks.withType<ShadowJar> {
     mergeServiceFiles()
 
     archiveFileName.set("kyromera.jar")
-
 }
-
 
 fun getGitTag(): String? = System.getenv("GIT_TAG")
 
@@ -51,14 +48,11 @@ fun getGitHash(): String? =
         null
     }
 
-fun getTimestamp(): String =
-    SimpleDateFormat("yyyyMMddHHmmss").format(Date())
+fun getTimestamp(): String = SimpleDateFormat("yyyyMMddHHmmss").format(Date())
 
 val tag = getGitTag()
 val commitHash = getGitHash() ?: "unknown"
 val fallbackVersion = "nightly-$commitHash-${getTimestamp()}"
-
-
 
 group = "me.diamondforge"
 version = tag ?: fallbackVersion
@@ -97,12 +91,12 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.1")
     implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.4")
 
-    implementation("org.jetbrains.exposed:exposed-core:${exposedVersion}")
-    implementation("org.jetbrains.exposed:exposed-crypt:${exposedVersion}")
-    implementation("org.jetbrains.exposed:exposed-dao:${exposedVersion}")
-    implementation("org.jetbrains.exposed:exposed-jdbc:${exposedVersion}")
-    implementation("org.jetbrains.exposed:exposed-kotlin-datetime:${exposedVersion}")
-    implementation("org.jetbrains.exposed:exposed-json:${exposedVersion}")
+    implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-crypt:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-kotlin-datetime:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
 
     implementation("io.lettuce:lettuce-core:6.7.1.RELEASE")
     implementation("org.apache.commons:commons-pool2:2.12.1")

@@ -17,30 +17,34 @@ import net.dv8tion.jda.api.utils.ChunkingFilter
 import net.dv8tion.jda.api.utils.MemberCachePolicy
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 
-
 private val logger by lazy { KotlinLogging.logger {} }
 
-
 @BService
-class Bot(private val config: Config, private val databaseSource: DatabaseSource) : JDAService() {
+class Bot(
+    private val config: Config,
+    private val databaseSource: DatabaseSource,
+) : JDAService() {
     override val intents: Set<GatewayIntent> =
         defaultIntents + GatewayIntent.GUILD_MEMBERS
 
+    override val cacheFlags: Set<CacheFlag> =
+        setOf(
+            CacheFlag.VOICE_STATE,
+        )
 
-    override val cacheFlags: Set<CacheFlag> = setOf(
-        CacheFlag.VOICE_STATE
-    )
-
-
-    override fun createJDA(event: BReadyEvent, eventManager: IEventManager) {
-        val jda = lightSharded(
-            token = config.token,
-            memberCachePolicy = MemberCachePolicy.NONE,
-            chunkingFilter = ChunkingFilter.NONE,
-            activityProvider = { Activity.customStatus("Booting up...") },
-        ) {
-            setStatus(OnlineStatus.DO_NOT_DISTURB)
-        }
+    override fun createJDA(
+        event: BReadyEvent,
+        eventManager: IEventManager,
+    ) {
+        val jda =
+            lightSharded(
+                token = config.token,
+                memberCachePolicy = MemberCachePolicy.NONE,
+                chunkingFilter = ChunkingFilter.NONE,
+                activityProvider = { Activity.customStatus("Booting up...") },
+            ) {
+                setStatus(OnlineStatus.DO_NOT_DISTURB)
+            }
         logger.info { "Booting up ${jda.shards.size} shards" }
         if (Environment.isDbTest) {
             logger.info { "Running in database development mode. Testing database connection pool..." }

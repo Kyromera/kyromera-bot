@@ -6,10 +6,11 @@ import me.diamondforge.kyromera.bot.services.LevelService
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 
 @BService
-class MessageListener(private val levelService: LevelService) {
+class MessageListener(
+    private val levelService: LevelService,
+) {
     @BEventListener
     suspend fun onMessageCreate(event: MessageReceivedEvent) {
         levelService.handleMessageCreated(event)
     }
-
 }

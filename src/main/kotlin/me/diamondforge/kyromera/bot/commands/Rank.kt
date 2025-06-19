@@ -10,44 +10,42 @@ import io.github.freya022.botcommands.api.core.entities.inputUser
 import io.github.oshai.kotlinlogging.KotlinLogging
 import me.diamondforge.kyromera.bot.configuration.LevelCardLayoutConfig.layout
 import me.diamondforge.kyromera.bot.services.LevelService
-import me.diamondforge.kyromera.levelcardlib.CardConfiguration
 import me.diamondforge.kyromera.levelcardlib.wrapper.JDALevelCard
 import me.diamondforge.kyromera.levelcardlib.wrapper.toByteArray
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.utils.FileUpload
 import kotlin.time.measureTimedValue
 
-
 private val logger = KotlinLogging.logger { }
 
 @Command
 class RankCommand(
     private val context: BContext,
-    private val levelService: LevelService
-    ) : GlobalApplicationCommandProvider {
+    private val levelService: LevelService,
+) : GlobalApplicationCommandProvider {
     suspend fun onCommand(
         event: GuildSlashEvent,
-        user: InputUser = event.inputUser
+        user: InputUser = event.inputUser,
     ) {
         event.deferReply().queue()
-        val (card, duration) = measureTimedValue {
-            val userExperience = levelService.getExperience(event.guild.idLong, user.idLong)
-            val (min, max) = levelService.MinAndMaxXpForLevel(userExperience.level)
-            JDALevelCard.Builder(user)
-                .xp(min, max, userExperience.xp)
-                .rank(userExperience.rank.toInt())
-                .layoutConfig(layout)
-                .showStatusIndicator(false)
-                .build()
-                .toByteArray()
-        }
+        val (card, duration) =
+            measureTimedValue {
+                val userExperience = levelService.getExperience(event.guild.idLong, user.idLong)
+                val (min, max) = levelService.MinAndMaxXpForLevel(userExperience.level)
+                JDALevelCard
+                    .Builder(user)
+                    .xp(min, max, userExperience.xp)
+                    .rank(userExperience.rank.toInt())
+                    .layoutConfig(layout)
+                    .showStatusIndicator(false)
+                    .build()
+                    .toByteArray()
+            }
         val fileUpload = FileUpload.fromData(card, "levelcard.png")
         logger.trace { "Level card generated in ${duration.inWholeMilliseconds}ms for user ${user.id} (${user.name})" }
 
         event.hook.sendFiles(fileUpload).queue()
     }
-
-
 
     override fun declareGlobalApplicationCommands(manager: GlobalApplicationCommandManager) {
         manager.slashCommand("rank", function = ::onCommand) {
@@ -61,5 +59,4 @@ class RankCommand(
             }
         }
     }
-
 }

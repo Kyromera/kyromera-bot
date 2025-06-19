@@ -16,18 +16,20 @@ fun testDatabaseConnectionPool() {
     // Test 1: Sequential database operations
     logger.info { "TEST 1: Sequential database operations" }
     val iterations = 10
-    val totalTime = measureTimeMillis {
-        repeat(iterations) { iteration ->
-            val operationTime = measureTimeMillis {
-                transaction {
-                    // Perform a simple database operation
-                    val count = LevelingTimestamps.selectAll().count()
-                    logger.info { "Test query #$iteration: Found $count timestamp records" }
-                }
+    val totalTime =
+        measureTimeMillis {
+            repeat(iterations) { iteration ->
+                val operationTime =
+                    measureTimeMillis {
+                        transaction {
+                            // Perform a simple database operation
+                            val count = LevelingTimestamps.selectAll().count()
+                            logger.info { "Test query #$iteration: Found $count timestamp records" }
+                        }
+                    }
+                logger.info { "Database operation #$iteration completed in ${operationTime}ms" }
             }
-            logger.info { "Database operation #$iteration completed in ${operationTime}ms" }
         }
-    }
 
     val avgSequentialTime = totalTime / iterations
     logger.info { "Sequential test completed: $iterations operations in ${totalTime}ms (avg: ${avgSequentialTime}ms per operation)" }
@@ -35,46 +37,51 @@ fun testDatabaseConnectionPool() {
     // Test 2: Parallel database connections
     logger.info { "TEST 2: Parallel database connections" }
     val numThreads = 5
-    val parallelTime = measureTimeMillis {
-        val threads = List(numThreads) { threadNum ->
-            Thread {
-                val threadTime = measureTimeMillis {
-                    transaction {
-                        val count = LevelingUsers.selectAll().count()
-                        logger.info { "Thread #$threadNum: Found $count user records" }
-                    }
+    val parallelTime =
+        measureTimeMillis {
+            val threads =
+                List(numThreads) { threadNum ->
+                    Thread {
+                        val threadTime =
+                            measureTimeMillis {
+                                transaction {
+                                    val count = LevelingUsers.selectAll().count()
+                                    logger.info { "Thread #$threadNum: Found $count user records" }
+                                }
+                            }
+                        logger.info { "Thread #$threadNum completed in ${threadTime}ms" }
+                    }.apply { start() }
                 }
-                logger.info { "Thread #$threadNum completed in ${threadTime}ms" }
-            }.apply { start() }
-        }
 
-        threads.forEach { it.join() }
-    }
+            threads.forEach { it.join() }
+        }
 
     val avgParallelTime = parallelTime / numThreads
     logger.info { "Parallel test completed: $numThreads operations in ${parallelTime}ms (avg: ${avgParallelTime}ms per operation)" }
 
     // Test 3: Connection reuse
     logger.info { "TEST 3: Connection reuse efficiency" }
-    val reuseTime = measureTimeMillis {
-        // First batch of operations to warm up the pool
-        repeat(5) {
-            transaction {
-                LevelingTimestamps.selectAll().count()
-            }
-        }
-
-        // Second batch to measure reuse efficiency
-        repeat(5) { iteration ->
-            val operationTime = measureTimeMillis {
+    val reuseTime =
+        measureTimeMillis {
+            // First batch of operations to warm up the pool
+            repeat(5) {
                 transaction {
-                    val count = LevelingTimestamps.selectAll().count()
-                    logger.info { "Reuse query #$iteration: Found $count timestamp records" }
+                    LevelingTimestamps.selectAll().count()
                 }
             }
-            logger.info { "Reuse operation #$iteration completed in ${operationTime}ms" }
+
+            // Second batch to measure reuse efficiency
+            repeat(5) { iteration ->
+                val operationTime =
+                    measureTimeMillis {
+                        transaction {
+                            val count = LevelingTimestamps.selectAll().count()
+                            logger.info { "Reuse query #$iteration: Found $count timestamp records" }
+                        }
+                    }
+                logger.info { "Reuse operation #$iteration completed in ${operationTime}ms" }
+            }
         }
-    }
 
     logger.info { "Connection reuse test completed in ${reuseTime}ms" }
 
@@ -83,22 +90,25 @@ fun testDatabaseConnectionPool() {
     val poolSize = 10 // This should match the maximumPoolSize in DatabaseSource
     val saturationThreads = poolSize + 5 // Exceed the pool size
 
-    val saturationTime = measureTimeMillis {
-        val threads = List(saturationThreads) { threadNum ->
-            Thread {
-                val threadTime = measureTimeMillis {
-                    transaction {
-                        // Simple query
-                        LevelingUsers.selectAll().count()
-                        logger.info { "Saturation thread #$threadNum executed query" }
-                    }
+    val saturationTime =
+        measureTimeMillis {
+            val threads =
+                List(saturationThreads) { threadNum ->
+                    Thread {
+                        val threadTime =
+                            measureTimeMillis {
+                                transaction {
+                                    // Simple query
+                                    LevelingUsers.selectAll().count()
+                                    logger.info { "Saturation thread #$threadNum executed query" }
+                                }
+                            }
+                        logger.info { "Saturation thread #$threadNum completed in ${threadTime}ms" }
+                    }.apply { start() }
                 }
-                logger.info { "Saturation thread #$threadNum completed in ${threadTime}ms" }
-            }.apply { start() }
-        }
 
-        threads.forEach { it.join() }
-    }
+            threads.forEach { it.join() }
+        }
 
     logger.info { "Pool saturation test completed: $saturationThreads threads in ${saturationTime}ms" }
 

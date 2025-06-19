@@ -52,34 +52,31 @@ typealias XpPoints = Int
 typealias Level = Int
 typealias Result = Pair<Boolean, String>
 
-
 private val logger = KotlinLogging.logger {}
-
 
 @BService
 class LevelService(
     private val redisClient: RedisClientProvider,
     private val databaseClient: DatabaseSource,
-    private val context: BContext
+    private val context: BContext,
 ) {
-    
     companion object {
         const val CHANNEL_DROP_GUILD_CACHE = "kyromera:levelservice:dropguildcache"
         const val CHANNEL_GET_GUILD_INFO = "kyromera:levelservice:getguildinfo"
     }
 
-    
-    private val json = kotlinx.serialization.json.Json { 
-        prettyPrint = false
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json =
+        kotlinx.serialization.json.Json {
+            prettyPrint = false
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
     private val cacheFlushInterval = 1.minutes
     private val voiceChannelCheckInterval = 1.minutes
 
     /**
      * Retrieves the level-up message template for a specific guild.
-     * 
+     *
      * This method first checks the Redis cache for the message. If not found,
      * it queries the database for the guild's custom level-up message.
      * If no custom message is found, it returns a default message.
@@ -98,14 +95,16 @@ class LevelService(
         }
 
         logger.debug { "No cached level-up message found for guild $guildId, querying database" }
-        val dbMessage = newSuspendedTransaction {
-            LevelingSettings
-                .selectAll().where { LevelingSettings.guildId eq guildId }
-                .limit(1)
-                .map { it[LevelingSettings.levelupMessage] }
-                .firstOrNull()
-                ?: "Congratulations {mention}! You just advanced to level {level}!"
-        }
+        val dbMessage =
+            newSuspendedTransaction {
+                LevelingSettings
+                    .selectAll()
+                    .where { LevelingSettings.guildId eq guildId }
+                    .limit(1)
+                    .map { it[LevelingSettings.levelupMessage] }
+                    .firstOrNull()
+                    ?: "Congratulations {mention}! You just advanced to level {level}!"
+            }
 
         redisClient.setWithExpiry(cacheKey, dbMessage, 4.hours.inWholeSeconds)
         logger.debug { "Cached level-up message for guild $guildId" }
@@ -115,7 +114,7 @@ class LevelService(
 
     /**
      * Retrieves the level-up message template for when a user receives a role reward.
-     * 
+     *
      * This method first checks the Redis cache for the message. If not found,
      * it queries the database for the guild's custom level-up reward message.
      * If no custom message is found, it returns a default message that includes
@@ -135,14 +134,16 @@ class LevelService(
         }
 
         logger.debug { "No cached level-up reward message found for guild $guildId, querying database" }
-        val dbMessage = newSuspendedTransaction {
-            LevelingSettings
-                .selectAll().where { LevelingSettings.guildId eq guildId }
-                .limit(1)
-                .map { it[LevelingSettings.levelupMessageReward] }
-                .firstOrNull()
-                ?: "Congratulations {mention}! You just advanced to level {level} and earned the {reward_names} role!"
-        }
+        val dbMessage =
+            newSuspendedTransaction {
+                LevelingSettings
+                    .selectAll()
+                    .where { LevelingSettings.guildId eq guildId }
+                    .limit(1)
+                    .map { it[LevelingSettings.levelupMessageReward] }
+                    .firstOrNull()
+                    ?: "Congratulations {mention}! You just advanced to level {level} and earned the {reward_names} role!"
+            }
 
         redisClient.setWithExpiry(cacheKey, dbMessage, 4.hours.inWholeSeconds)
         logger.debug { "Cached level-up reward message for guild $guildId" }
@@ -152,7 +153,7 @@ class LevelService(
 
     /**
      * Retrieves the level-up announcement mode for a specific guild.
-     * 
+     *
      * This method first checks the Redis cache for the announcement mode. If not found,
      * it queries the database for the guild's custom level-up announcement mode.
      * If no custom mode is found, it returns the default mode (CURRENT).
@@ -171,14 +172,16 @@ class LevelService(
         }
 
         logger.debug { "No cached level-up announce mode found for guild $guildId, querying database" }
-        val dbMode = newSuspendedTransaction {
-            LevelingSettings
-                .selectAll().where { LevelingSettings.guildId eq guildId }
-                .limit(1)
-                .map { it[LevelingSettings.levelupAnnounceMode] }
-                .firstOrNull()
-                ?: LevelUpAnnounceMode.CURRENT.value
-        }
+        val dbMode =
+            newSuspendedTransaction {
+                LevelingSettings
+                    .selectAll()
+                    .where { LevelingSettings.guildId eq guildId }
+                    .limit(1)
+                    .map { it[LevelingSettings.levelupAnnounceMode] }
+                    .firstOrNull()
+                    ?: LevelUpAnnounceMode.CURRENT.value
+            }
 
         redisClient.setWithExpiry(cacheKey, dbMode, 4.hours.inWholeSeconds)
         logger.debug { "Cached level-up announce mode for guild $guildId: $dbMode" }
@@ -188,20 +191,25 @@ class LevelService(
 
     /**
      * Sets the level-up announcement mode for a specific guild.
-     * 
+     *
      * This method updates the database with the new announcement mode and
      * updates the cache to reflect the change.
      *
      * @param guildId The ID of the guild to set the level-up announcement mode for
      * @param mode The LevelUpAnnounceMode enum value to set
      */
-    suspend fun setLevelUpAnnounceMode(guildId: Long, mode: LevelUpAnnounceMode) {
+    suspend fun setLevelUpAnnounceMode(
+        guildId: Long,
+        mode: LevelUpAnnounceMode,
+    ) {
         val cacheKey = "levelup:announce:mode:$guildId"
 
         newSuspendedTransaction {
-            val exists = LevelingSettings
-                .selectAll().where { LevelingSettings.guildId eq guildId }
-                .count() > 0
+            val exists =
+                LevelingSettings
+                    .selectAll()
+                    .where { LevelingSettings.guildId eq guildId }
+                    .count() > 0
 
             if (exists) {
                 LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
@@ -219,7 +227,6 @@ class LevelService(
         logger.debug { "Updated level-up announce mode for guild $guildId to ${mode.value}" }
     }
 
-
     @BEventListener
     suspend fun onInjectedJDA(event: InjectedJDAEvent) {
         logger.info { "JDA instance is ready, starting workers" }
@@ -231,13 +238,12 @@ class LevelService(
             startVoiceChannelMonitoringWorker()
         }
 
-        
         initializeRedisSubscriptions()
     }
 
     /**
      * Initializes Redis Pub/Sub subscriptions for external commands.
-     * 
+     *
      * This method sets up listeners for various Redis channels that allow external
      * systems to trigger actions in the LevelService, such as dropping guild caches
      * or retrieving guild information.
@@ -245,7 +251,6 @@ class LevelService(
     private fun initializeRedisSubscriptions() {
         logger.info { "Initializing Redis Pub/Sub subscriptions for LevelService" }
 
-        
         redisClient.subscribe(CHANNEL_DROP_GUILD_CACHE) { message ->
             try {
                 val guildId = message.toLongOrNull()
@@ -262,7 +267,6 @@ class LevelService(
             }
         }
 
-        
         redisClient.subscribe(CHANNEL_GET_GUILD_INFO) { message ->
             try {
                 val guildId = message.toLongOrNull()
@@ -286,7 +290,7 @@ class LevelService(
 
     /**
      * Starts a background worker that periodically flushes cached XP data to the database.
-     * 
+     *
      * This worker runs continuously in the background, flushing XP cache to the database
      * at regular intervals defined by [cacheFlushInterval]. It includes error handling
      * and automatic recovery mechanisms to ensure the worker continues running even
@@ -295,10 +299,8 @@ class LevelService(
     private suspend fun startCacheFlushWorker() {
         logger.info { "Starting XP cache flush worker with interval: $cacheFlushInterval" }
 
-
         while (true) {
             try {
-
                 while (true) {
                     try {
                         flushCacheToDatabase()
@@ -310,19 +312,19 @@ class LevelService(
                 }
             } catch (e: Exception) {
                 logger.error(e) { "Critical error in XP cache flush worker, restarting worker" }
-                delay(30.seconds) 
+                delay(30.seconds)
             }
         }
     }
 
     /**
      * Starts a background worker that monitors voice channels and awards XP to users.
-     * 
+     *
      * This worker runs continuously in the background, checking voice channels at regular
      * intervals defined by [voiceChannelCheckInterval]. It awards XP to users who are
      * actively participating in voice channels. The worker includes error handling and
      * automatic recovery mechanisms to ensure it continues running even if errors occur.
-     * 
+     *
      * The worker waits for the JDA instance to be fully ready before starting the monitoring.
      */
     private suspend fun startVoiceChannelMonitoringWorker() {
@@ -347,13 +349,13 @@ class LevelService(
 
     /**
      * Checks all voice channels across all guilds and awards XP to eligible users.
-     * 
+     *
      * This method iterates through all guilds and their voice channels, awarding XP to users who are:
      * - Not bots
      * - Not muted or deafened
      * - In a voice channel with at least one other unmuted user
      * - Not in the guild's AFK channel
-     * 
+     *
      * The method includes comprehensive error handling to ensure that failures in processing
      * one guild or channel don't prevent others from being processed.
      */
@@ -371,7 +373,9 @@ class LevelService(
                     val voiceChannels = guild.voiceChannels
 
                     for (voiceChannel in voiceChannels) {
-                        logger.debug { "Processing voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name}. Member count: ${voiceChannel.members.size}" }
+                        logger.debug {
+                            "Processing voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name}. Member count: ${voiceChannel.members.size}"
+                        }
                         try {
                             val members = voiceChannel.members
 
@@ -381,11 +385,15 @@ class LevelService(
 
                             val unmutedMembers = members.filter { it.voiceState?.isMuted == false && !it.user.isBot }
                             if (unmutedMembers.size < 2) {
-                                logger.debug { "Skipping voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name} due to insufficient unmuted members" }
+                                logger.debug {
+                                    "Skipping voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name} due to insufficient unmuted members"
+                                }
                                 continue
                             }
 
-                            logger.trace { "Found ${members.size} members in voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name}" }
+                            logger.trace {
+                                "Found ${members.size} members in voice channel ${voiceChannel.name} (${voiceChannel.id}) in guild ${guild.name}"
+                            }
 
                             for (member in members) {
                                 try {
@@ -412,12 +420,16 @@ class LevelService(
                                     val newXp = addXp(guildId, userId, XpRewardType.Voice, channelId, roleIds)
 
                                     if (newXp == null) {
-                                        logger.debug { "User $userId in guild $guildId did not receive XP for voice (cooldown or filtered)" }
+                                        logger.debug {
+                                            "User $userId in guild $guildId did not receive XP for voice (cooldown or filtered)"
+                                        }
                                     } else {
                                         val level = levelAtXp(newXp)
                                         awardedMembers++
                                         totalAvardedMemberCount++
-                                        logger.debug { "Awarded voice XP to user $userId in guild $guildId. Total XP: $newXp, Level: $level" }
+                                        logger.debug {
+                                            "Awarded voice XP to user $userId in guild $guildId. Total XP: $newXp, Level: $level"
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     logger.error(e) { "Error processing member ${member.id} in voice channel ${voiceChannel.id}" }
@@ -436,12 +448,11 @@ class LevelService(
         } catch (e: Exception) {
             logger.error(e) { "Error checking voice channels" }
         }
-
     }
 
     /**
      * Flushes cached XP data from Redis to the database.
-     * 
+     *
      * This method retrieves all pending XP entries from Redis cache and persists them to the database.
      * For each entry, it:
      * 1. Retrieves the cached XP data
@@ -450,7 +461,7 @@ class LevelService(
      * 4. Calculates new levels based on updated XP totals
      * 5. Triggers level-up messages and rewards if a user has leveled up
      * 6. Deletes the cache entry after successful processing
-     * 
+     *
      * The method includes error handling for individual cache entries to ensure that
      * failures in processing one entry don't prevent others from being processed.
      */
@@ -469,10 +480,13 @@ class LevelService(
                 val cachedXp = redisClient.getTyped(key, CachedXp.serializer()) ?: return@forEach
 
                 newSuspendedTransaction {
-                    val existingUser = LevelingUsers.selectAll().where(
-                        LevelingUsers.guildId eq cachedXp.guildId and
-                                (LevelingUsers.userId eq cachedXp.userId)
-                    ).singleOrNull()
+                    val existingUser =
+                        LevelingUsers
+                            .selectAll()
+                            .where(
+                                LevelingUsers.guildId eq cachedXp.guildId and
+                                    (LevelingUsers.userId eq cachedXp.userId),
+                            ).singleOrNull()
 
                     if (existingUser != null) {
                         val oldLevel = existingUser[LevelingUsers.level]
@@ -481,7 +495,9 @@ class LevelService(
                         val updatedLevel = levelAtXp(updatedXp)
 
                         if (updatedLevel > oldLevel) {
-                            logger.info { "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel." }
+                            logger.info {
+                                "User ${cachedXp.userId} in guild ${cachedXp.guildId} leveled up from $oldLevel to $updatedLevel."
+                            }
 
                             KyromeraScope.launch(Dispatchers.IO) {
                                 val lastChannelId = getLastMessageChannelInGuild(cachedXp.guildId)
@@ -497,22 +513,26 @@ class LevelService(
                                                 oldLevel = oldLevel,
                                                 xp = updatedXp,
                                                 channel = channel,
-                                                oldXp = existingXp
+                                                oldXp = existingXp,
                                             )
                                             logger.debug { "Sent level-up message to channel $lastChannelId in guild ${cachedXp.guildId}" }
                                         }
                                     } catch (e: Exception) {
-                                        logger.error(e) { "Failed to send level-up message to channel $lastChannelId in guild ${cachedXp.guildId}" }
+                                        logger.error(
+                                            e,
+                                        ) { "Failed to send level-up message to channel $lastChannelId in guild ${cachedXp.guildId}" }
                                     }
                                 } else {
-                                    logger.warn { "No last message channel found for guild ${cachedXp.guildId}, could not send level-up message" }
+                                    logger.warn {
+                                        "No last message channel found for guild ${cachedXp.guildId}, could not send level-up message"
+                                    }
                                 }
                             }
                         }
 
                         LevelingUsers.update({
                             LevelingUsers.guildId eq cachedXp.guildId and
-                                    (LevelingUsers.userId eq cachedXp.userId)
+                                (LevelingUsers.userId eq cachedXp.userId)
                         }) {
                             it[xp] = updatedXp
                             it[level] = updatedLevel
@@ -537,13 +557,13 @@ class LevelService(
 
     /**
      * Adds XP to a user in a specific guild based on the reward type.
-     * 
+     *
      * This method handles the core XP awarding logic:
      * 1. Checks if the user is on cooldown for the specified reward type
      * 2. If not on cooldown, sets a cooldown and awards XP
      * 3. Retrieves existing XP from both cache and database
      * 4. Updates the cache with the new XP value
-     * 
+     *
      * The XP is stored in Redis cache and later persisted to the database by the cache flush worker.
      *
      * @param guildId The ID of the guild where the user earned XP
@@ -553,19 +573,25 @@ class LevelService(
      * @param roleIds The IDs of the roles the user has (optional)
      * @return The user's new total XP after adding the reward, or null if the user is on cooldown or filtered
      */
-    suspend fun addXp(guildId: Long, userId: Long, type: XpRewardType, channelId: Long? = null, roleIds: List<Long>? = null): Int? {
+    suspend fun addXp(
+        guildId: Long,
+        userId: Long,
+        type: XpRewardType,
+        channelId: Long? = null,
+        roleIds: List<Long>? = null,
+    ): Int? {
         val multiplier = getXpMultiplier(guildId)
 
-        val isEnabled = when (type) {
-            XpRewardType.Message -> multiplier.textEnabled
-            XpRewardType.Voice -> multiplier.vcEnabled
-        }
+        val isEnabled =
+            when (type) {
+                XpRewardType.Message -> multiplier.textEnabled
+                XpRewardType.Voice -> multiplier.vcEnabled
+            }
 
         if (!isEnabled) {
             logger.debug { "Leveling for ${type.name} is disabled in guild $guildId" }
             return null
         }
-
 
         if (channelId != null) {
             val isChannelAllowed = isChannelAllowed(guildId, channelId)
@@ -574,7 +600,6 @@ class LevelService(
                 return null
             }
         }
-
 
         if (roleIds != null) {
             val isRoleAllowed = isRoleAllowed(guildId, roleIds)
@@ -589,7 +614,11 @@ class LevelService(
 
         if (onCooldown) {
             val remainingCooldown = redisClient.getExpiry(cooldownKey)
-            logger.debug { "User $userId in guild $guildId is on cooldown for ${type.name} XP for ${getXpCooldown(type).inWholeSeconds} seconds. Remaining cooldown: $remainingCooldown seconds" }
+            logger.debug {
+                "User $userId in guild $guildId is on cooldown for ${type.name} XP for ${getXpCooldown(
+                    type,
+                ).inWholeSeconds} seconds. Remaining cooldown: $remainingCooldown seconds"
+            }
             return null
         }
 
@@ -598,49 +627,55 @@ class LevelService(
 
         val baseXp = getBaseXp(type)
 
+        val roleMultiplier =
+            if (roleIds != null && roleIds.isNotEmpty()) {
+                getRoleMultiplier(guildId, roleIds)
+            } else {
+                RoleMultiplier.DEFAULT_MULTIPLIER
+            }
 
-        val roleMultiplier = if (roleIds != null && roleIds.isNotEmpty()) {
-            getRoleMultiplier(guildId, roleIds)
-        } else {
-            RoleMultiplier.DEFAULT_MULTIPLIER
-        }
-
-
-        val activityMultiplier = when (type) {
-            XpRewardType.Message -> multiplier.textMultiplier
-            XpRewardType.Voice -> multiplier.vcMultiplier
-        }
+        val activityMultiplier =
+            when (type) {
+                XpRewardType.Message -> multiplier.textMultiplier
+                XpRewardType.Voice -> multiplier.vcMultiplier
+            }
 
         val totalMultiplier = activityMultiplier * roleMultiplier
         val multipliedXp = (baseXp * totalMultiplier).toInt()
 
-        logger.debug { "Adding $multipliedXp XP (base: $baseXp, activity multiplier: $activityMultiplier, role multiplier: $roleMultiplier, total multiplier: $totalMultiplier) for user $userId in guild $guildId for type ${type.name}" }
+        logger.debug {
+            "Adding $multipliedXp XP (base: $baseXp, activity multiplier: $activityMultiplier, role multiplier: $roleMultiplier, total multiplier: $totalMultiplier) for user $userId in guild $guildId for type ${type.name}"
+        }
 
         val cacheKey = "xp:pending:$guildId:$userId"
         val currentCachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
-        val dbXp = newSuspendedTransaction {
-            try {
-                val result = LevelingUsers.selectAll().where(
-                    LevelingUsers.guildId eq guildId and
-                            (LevelingUsers.userId eq userId)
-                ).singleOrNull()
+        val dbXp =
+            newSuspendedTransaction {
+                try {
+                    val result =
+                        LevelingUsers
+                            .selectAll()
+                            .where(
+                                LevelingUsers.guildId eq guildId and
+                                    (LevelingUsers.userId eq userId),
+                            ).singleOrNull()
 
-                if (result != null) {
-                    try {
-                        result[LevelingUsers.xp]
-                    } catch (e: IllegalStateException) {
-                        logger.warn(e) { "XP field not found in record for user $userId in guild $guildId, defaulting to 0" }
+                    if (result != null) {
+                        try {
+                            result[LevelingUsers.xp]
+                        } catch (e: IllegalStateException) {
+                            logger.warn(e) { "XP field not found in record for user $userId in guild $guildId, defaulting to 0" }
+                            0
+                        }
+                    } else {
                         0
                     }
-                } else {
+                } catch (e: Exception) {
+                    logger.error(e) { "Error retrieving XP for user $userId in guild $guildId, defaulting to 0" }
                     0
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Error retrieving XP for user $userId in guild $guildId, defaulting to 0" }
-                0
             }
-        }
 
         val newCachedXp =
             currentCachedXp?.copy(xp = currentCachedXp.xp + multipliedXp, lastUpdated = System.currentTimeMillis())
@@ -651,10 +686,9 @@ class LevelService(
         return dbXp + newCachedXp.xp
     }
 
-
     /**
      * Retrieves the total XP for a user in a specific guild.
-     * 
+     *
      * This method implements a multi-level caching strategy:
      * 1. First checks a short-lived runtime cache for the most recent XP value
      * 2. If not found, checks the pending XP cache for any XP not yet persisted to the database
@@ -666,7 +700,10 @@ class LevelService(
      * @param userId The ID of the user whose XP to retrieve
      * @return The total XP points for the user in the specified guild
      */
-    suspend fun getXp(guildId: Long, userId: Long): XpPoints {
+    suspend fun getXp(
+        guildId: Long,
+        userId: Long,
+    ): XpPoints {
         val preCacheKey = "xp:runtimecache:$guildId:$userId"
         if (redisClient.get(preCacheKey) != null) {
             logger.debug { "Using runtime cache for XP of user $userId in guild $guildId" }
@@ -675,34 +712,39 @@ class LevelService(
         val cacheKey = "xp:pending:$guildId:$userId"
         val cachedXp = redisClient.getTyped(cacheKey, CachedXp.serializer())
 
-        val dbXp = newSuspendedTransaction {
-            try {
-                val result = LevelingUsers.selectAll().where(
-                    LevelingUsers.guildId eq guildId and
-                            (LevelingUsers.userId eq userId)
-                ).singleOrNull()
+        val dbXp =
+            newSuspendedTransaction {
+                try {
+                    val result =
+                        LevelingUsers
+                            .selectAll()
+                            .where(
+                                LevelingUsers.guildId eq guildId and
+                                    (LevelingUsers.userId eq userId),
+                            ).singleOrNull()
 
-                if (result != null) {
-                    try {
-                        result[LevelingUsers.xp]
-                    } catch (e: IllegalStateException) {
-                        logger.warn(e) { "XP field not found in record for user $userId in guild $guildId, defaulting to 0" }
+                    if (result != null) {
+                        try {
+                            result[LevelingUsers.xp]
+                        } catch (e: IllegalStateException) {
+                            logger.warn(e) { "XP field not found in record for user $userId in guild $guildId, defaulting to 0" }
+                            0
+                        }
+                    } else {
                         0
                     }
-                } else {
+                } catch (e: Exception) {
+                    logger.error(e) { "Error retrieving XP for user $userId in guild $guildId, defaulting to 0" }
                     0
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Error retrieving XP for user $userId in guild $guildId, defaulting to 0" }
-                0
             }
-        }
 
-        val xp = if (cachedXp != null) {
-            dbXp + cachedXp.xp
-        } else {
-            dbXp
-        }
+        val xp =
+            if (cachedXp != null) {
+                dbXp + cachedXp.xp
+            } else {
+                dbXp
+            }
         redisClient.setWithExpiry(preCacheKey, xp.toString(), 60.seconds.inWholeSeconds)
 
         return xp
@@ -710,7 +752,7 @@ class LevelService(
 
     /**
      * Retrieves the current level for a user in a specific guild.
-     * 
+     *
      * This method first gets the user's total XP using [getXp], then calculates
      * the corresponding level using [levelAtXp].
      *
@@ -718,14 +760,17 @@ class LevelService(
      * @param userId The ID of the user whose level to retrieve
      * @return The current level of the user in the specified guild
      */
-    suspend fun getLevel(guildId: Long, userId: Long): Level {
+    suspend fun getLevel(
+        guildId: Long,
+        userId: Long,
+    ): Level {
         val totalXp = getXp(guildId, userId)
         return levelAtXp(totalXp)
     }
 
     /**
      * Determines the base amount of XP to award for a specific activity type.
-     * 
+     *
      * This method returns a random amount of XP within a predefined range based on the activity type:
      * - Message: 15-25 XP for sending a message
      * - Voice: 2-6 XP for active participation in voice channels
@@ -733,15 +778,15 @@ class LevelService(
      * @param type The type of activity that earned the XP
      * @return A random amount of XP within the range for the specified activity type
      */
-    fun getBaseXp(type: XpRewardType): Int = when (type) {
-        XpRewardType.Message -> (15..25).random()
-        XpRewardType.Voice -> (2..6).random()
-    }
-
+    fun getBaseXp(type: XpRewardType): Int =
+        when (type) {
+            XpRewardType.Message -> (15..25).random()
+            XpRewardType.Voice -> (2..6).random()
+        }
 
     /**
      * Calculates the total XP required to reach a specific level.
-     * 
+     *
      * This method uses a mathematical formula to determine the cumulative XP
      * required to reach a given level. The formula is a polynomial function
      * that creates a non-linear progression curve, making higher levels
@@ -756,10 +801,9 @@ class LevelService(
         return (5 / 6.0 * (151 * alvl + 33 * alvl.toDouble().pow(2.0) + 2 * alvl.toDouble().pow(3.0)) + 100).toInt()
     }
 
-
     /**
      * Calculates the percentage of progress towards the next level.
-     * 
+     *
      * This method determines how far a user has progressed within their current level
      * by calculating what percentage of the XP required for the next level has been earned.
      * The result is a value between 0.0 (just reached current level) and 1.0 (ready to level up).
@@ -768,7 +812,10 @@ class LevelService(
      * @param xp The user's total XP
      * @return A value between 0.0 and 1.0 representing the percentage progress towards the next level
      */
-    fun getLevelPercent(level: Int, xp: Int): Double {
+    fun getLevelPercent(
+        level: Int,
+        xp: Int,
+    ): Double {
         if (level <= 0) return 0.0
 
         val currentXp = xpForLevel(level)
@@ -781,10 +828,9 @@ class LevelService(
         }
     }
 
-
     /**
      * Determines the level corresponding to a given amount of total XP.
-     * 
+     *
      * This method calculates what level a user should be at based on their total accumulated XP.
      * It iteratively checks each level's XP requirement against the total XP until it finds
      * the highest level the user has enough XP to achieve.
@@ -805,10 +851,9 @@ class LevelService(
         }
     }
 
-
     /**
      * Calculates how much more XP is needed to reach the next level.
-     * 
+     *
      * This method determines the amount of additional XP a user needs to earn
      * to advance from their current level to the next level.
      *
@@ -816,7 +861,10 @@ class LevelService(
      * @param totalXp The user's current total XP
      * @return The amount of XP needed to reach the next level
      */
-    fun XpUntilNextLevel(level: Int, totalXp: Int): Int {
+    fun XpUntilNextLevel(
+        level: Int,
+        totalXp: Int,
+    ): Int {
         if (level <= 0) return 0
 
         val currentXp = xpForLevel(level)
@@ -831,7 +879,7 @@ class LevelService(
 
     /**
      * Calculates the minimum and maximum XP values for a specific level.
-     * 
+     *
      * This method determines the XP range that corresponds to a given level.
      * The minimum is the XP required to reach the level, and the maximum
      * is one less than the XP required to reach the next level.
@@ -840,7 +888,6 @@ class LevelService(
      * @return A Pair containing the minimum and maximum XP values for the level
      */
     fun MinAndMaxXpForLevel(level: Int): Pair<Int, Int> {
-
         val currentXp = xpForLevel(level)
         val nextXp = xpForLevel(level + 1)
 
@@ -849,7 +896,7 @@ class LevelService(
 
     /**
      * Determines the cooldown period for XP rewards based on the activity type.
-     * 
+     *
      * This method returns the duration that must elapse before a user can
      * earn XP again for the same type of activity. This prevents users from
      * earning XP too quickly by spamming messages or other actions.
@@ -857,23 +904,25 @@ class LevelService(
      * @param type The type of activity to get the cooldown for
      * @return The cooldown duration for the specified activity type
      */
-    private fun getXpCooldown(type: XpRewardType): Duration {
-        return when (type) {
+    private fun getXpCooldown(type: XpRewardType): Duration =
+        when (type) {
             XpRewardType.Message -> 60.seconds
             XpRewardType.Voice -> 60.seconds
         }
-    }
 
     /**
      * Stores the ID of the last active message channel in a guild.
-     * 
+     *
      * This method caches the channel ID in Redis with an expiry time,
      * allowing the bot to remember where to send level-up messages.
      *
      * @param guildId The ID of the guild
      * @param channelId The ID of the channel to record as the last active channel
      */
-    private suspend fun setLastMessageChannelInGuild(guildId: Long, channelId: Long) {
+    private suspend fun setLastMessageChannelInGuild(
+        guildId: Long,
+        channelId: Long,
+    ) {
         val key = "guild:$guildId:lastMessageChannel"
         redisClient.setWithExpiry(key, channelId.toString(), 12.hours.inWholeSeconds)
         logger.debug { "Set last message channel for guild $guildId to $channelId" }
@@ -881,7 +930,7 @@ class LevelService(
 
     /**
      * Retrieves the ID of the last active message channel in a guild.
-     * 
+     *
      * This method fetches the cached channel ID from Redis, which was previously
      * stored by [setLastMessageChannelInGuild]. This is used to determine where
      * to send level-up messages.
@@ -894,15 +943,14 @@ class LevelService(
         return redisClient.get(key)?.toLongOrNull()
     }
 
-
     /**
      * Handles message creation events for XP rewards.
-     * 
+     *
      * This method is called when a new message is sent in a guild. It:
      * 1. Filters out messages from bots and DMs
      * 2. Records the channel as the last active channel in the guild
      * 3. Awards XP to the message author if they're not on cooldown and not filtered
-     * 
+     *
      * The XP award is subject to cooldown periods to prevent spam and filter settings.
      *
      * @param createEvent The message received event containing information about the message
@@ -912,12 +960,10 @@ class LevelService(
         @Suppress("SENSELESS_COMPARISON")
         if (createEvent.guild == null) return
 
-
         logger.debug { "Received message create event for guild ${createEvent.guild.name} and channel ${createEvent.channel.name}" }
         val guildId = createEvent.guild.idLong
         val userId = createEvent.author.idLong
         val channelId = createEvent.channel.idLong
-
 
         val member = createEvent.member
         val roleIds = member?.roles?.map { it.idLong } ?: emptyList()
@@ -936,7 +982,7 @@ class LevelService(
 
     /**
      * Retrieves the list of role rewards configured for a guild.
-     * 
+     *
      * This method fetches role rewards that are granted to users when they reach specific levels.
      * It first checks the Redis cache, and if not found, queries the database.
      * The results are cached for future use to improve performance.
@@ -955,17 +1001,19 @@ class LevelService(
         }
 
         logger.debug { "No cached reward roles found for guild $guildId, querying database" }
-        val dbRoles = newSuspendedTransaction {
-            LevelingUsers.selectAll()
-                .where(LevelingUsers.guildId eq guildId)
-                .map {
-                    RewardRole(
-                        guildId = it[LevelingUsers.guildId],
-                        roleId = it[LevelingUsers.userId],
-                        level = it[LevelingUsers.level]
-                    )
-                }
-        }
+        val dbRoles =
+            newSuspendedTransaction {
+                LevelingUsers
+                    .selectAll()
+                    .where(LevelingUsers.guildId eq guildId)
+                    .map {
+                        RewardRole(
+                            guildId = it[LevelingUsers.guildId],
+                            roleId = it[LevelingUsers.userId],
+                            level = it[LevelingUsers.level],
+                        )
+                    }
+            }
 
         if (dbRoles.isEmpty()) {
             logger.debug { "No reward roles found in database for guild $guildId" }
@@ -977,10 +1025,9 @@ class LevelService(
         return dbRoles
     }
 
-
     /**
      * Checks if a user has enabled level-up ping notifications.
-     * 
+     *
      * This method determines whether a user should be mentioned (pinged) in level-up messages.
      * It first checks the Redis cache, and if not found, queries the database.
      * The result is cached for future use to improve performance.
@@ -989,7 +1036,10 @@ class LevelService(
      * @param userId The ID of the user to check ping settings for
      * @return True if the user has enabled level-up pings, false otherwise
      */
-    suspend fun getPingEnabled(guildId: Long, userId: Long): Boolean {
+    suspend fun getPingEnabled(
+        guildId: Long,
+        userId: Long,
+    ): Boolean {
         val cacheKey = "leveling:ping:$guildId:$userId"
         val cachedPing = redisClient.get(cacheKey)?.toBoolean()
         if (cachedPing != null) {
@@ -997,12 +1047,14 @@ class LevelService(
             return cachedPing
         }
         logger.debug { "No cached ping setting found for user $userId in guild $guildId, querying database" }
-        val dbPing = newSuspendedTransaction {
-            LevelingUsers.selectAll()
-                .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
-                .map { it[LevelingUsers.pingActive] }
-                .firstOrNull() ?: false
-        }
+        val dbPing =
+            newSuspendedTransaction {
+                LevelingUsers
+                    .selectAll()
+                    .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
+                    .map { it[LevelingUsers.pingActive] }
+                    .firstOrNull() ?: false
+            }
         redisClient.setWithExpiry(cacheKey, dbPing.toString(), 4.hours.inWholeSeconds)
         logger.debug { "Cached ping setting for user $userId in guild $guildId: $dbPing" }
         return dbPing
@@ -1010,7 +1062,7 @@ class LevelService(
 
     /**
      * Sends a level-up message and assigns role rewards if applicable.
-     * 
+     *
      * This method is called when a user levels up. It:
      * 1. Checks if the user has enabled ping notifications
      * 2. Retrieves the appropriate level-up message template
@@ -1027,7 +1079,15 @@ class LevelService(
      * @param channel The channel to send the level-up message to
      * @param oldXp The user's previous XP total (defaults to 0)
      */
-    private suspend fun sendLevelUpMessageAndReward(userId: Long, guildId: Long, level: Int, oldLevel: Int, xp: Int, channel: MessageChannel, oldXp: Int = 0) {
+    private suspend fun sendLevelUpMessageAndReward(
+        userId: Long,
+        guildId: Long,
+        level: Int,
+        oldLevel: Int,
+        xp: Int,
+        channel: MessageChannel,
+        oldXp: Int = 0,
+    ) {
         try {
             val announceMode = getLevelUpAnnounceMode(guildId)
 
@@ -1040,98 +1100,107 @@ class LevelService(
             val pingEnabled = isPingEnabled(guildId, userId)
 
             val jda = context.jda
-            val guild = try {
-                jda.getGuildById(guildId) ?: run {
-                    logger.error { "Failed to get guild $guildId, guild not found" }
-                    return
-                }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get guild $guildId due to exception" }
-                return
-            }
-
-            val user = try {
-                jda.getUserById(userId) ?: run {
-                    jda.retrieveUserById(userId).await() ?: run {
-                        logger.error { "Failed to get user $userId, user not found" }
+            val guild =
+                try {
+                    jda.getGuildById(guildId) ?: run {
+                        logger.error { "Failed to get guild $guildId, guild not found" }
                         return
                     }
-                }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get user $userId due to exception" }
-                return
-            }
-
-            val member = try {
-                guild.getMember(user) ?: run {
-                    logger.error { "Failed to get member for user $userId in guild $guildId, member not found" }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get guild $guildId due to exception" }
                     return
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get member for user $userId in guild $guildId due to exception" }
-                return
-            }
 
-            val rewardRoles = try {
-                if (level > oldLevel) {
-                    getRewardRoles(guildId).filter { it.level == level }
-                } else {
+            val user =
+                try {
+                    jda.getUserById(userId) ?: run {
+                        jda.retrieveUserById(userId).await() ?: run {
+                            logger.error { "Failed to get user $userId, user not found" }
+                            return
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get user $userId due to exception" }
+                    return
+                }
+
+            val member =
+                try {
+                    guild.getMember(user) ?: run {
+                        logger.error { "Failed to get member for user $userId in guild $guildId, member not found" }
+                        return
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get member for user $userId in guild $guildId due to exception" }
+                    return
+                }
+
+            val rewardRoles =
+                try {
+                    if (level > oldLevel) {
+                        getRewardRoles(guildId).filter { it.level == level }
+                    } else {
+                        emptyList()
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get reward roles for guild $guildId, defaulting to empty list" }
                     emptyList()
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get reward roles for guild $guildId, defaulting to empty list" }
-                emptyList()
-            }
 
-            val rewardRoleObjects = try {
-                rewardRoles.mapNotNull { 
-                    try {
-                        guild.getRoleById(it.roleId)
-                    } catch (e: Exception) {
-                        logger.error(e) { "Failed to get role ${it.roleId} in guild $guildId" }
-                        null
+            val rewardRoleObjects =
+                try {
+                    rewardRoles.mapNotNull {
+                        try {
+                            guild.getRoleById(it.roleId)
+                        } catch (e: Exception) {
+                            logger.error(e) { "Failed to get role ${it.roleId} in guild $guildId" }
+                            null
+                        }
                     }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to map reward roles to role objects for guild $guildId" }
+                    emptyList()
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to map reward roles to role objects for guild $guildId" }
-                emptyList()
-            }
 
-            val baseMessage = try {
-                if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
-                    getLevelUpMessageReward(guildId)
-                } else {
-                    getLevelUpMessage(guildId)
+            val baseMessage =
+                try {
+                    if (level > oldLevel && rewardRoleObjects.isNotEmpty()) {
+                        getLevelUpMessageReward(guildId)
+                    } else {
+                        getLevelUpMessage(guildId)
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get level-up message for guild $guildId, using default message" }
+                    "Congratulations {mention}! You just advanced to level {level}!"
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get level-up message for guild $guildId, using default message" }
-                "Congratulations {mention}! You just advanced to level {level}!"
-            }
 
-            val templatedMessage = try {
-                templateLevelUpMessage(
-                    baseMessage,
-                    user,
-                    member,
-                    level,
-                    oldLevel,
-                    xp,
-                    rewardRoleObjects,
-                    oldXp
-                )
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to template level-up message for user $userId in guild $guildId, using simple message" }
-                "Congratulations ${user.asMention}! You just advanced to level $level!"
-            }
-
-            val message = MessageCreate {
-                content = templatedMessage
-                allowedMentionTypes = if (pingEnabled) {
-                    EnumSet.of(MentionType.USER, MentionType.ROLE)
-                } else {
-                    enumSetOf(MentionType.ROLE)
+            val templatedMessage =
+                try {
+                    templateLevelUpMessage(
+                        baseMessage,
+                        user,
+                        member,
+                        level,
+                        oldLevel,
+                        xp,
+                        rewardRoleObjects,
+                        oldXp,
+                    )
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to template level-up message for user $userId in guild $guildId, using simple message" }
+                    "Congratulations ${user.asMention}! You just advanced to level $level!"
                 }
-            }
+
+            val message =
+                MessageCreate {
+                    content = templatedMessage
+                    allowedMentionTypes =
+                        if (pingEnabled) {
+                            EnumSet.of(MentionType.USER, MentionType.ROLE)
+                        } else {
+                            enumSetOf(MentionType.ROLE)
+                        }
+                }
 
             when {
                 announceMode.isDM() -> {
@@ -1139,7 +1208,7 @@ class LevelService(
                         user.openPrivateChannel().queue({ privateChannel ->
                             privateChannel.sendMessage(message).queue(
                                 { logger.debug { "Sent level-up DM to user $userId in guild $guildId" } },
-                                { e -> logger.error(e) { "Failed to send level-up DM to user $userId in guild $guildId" } }
+                                { e -> logger.error(e) { "Failed to send level-up DM to user $userId in guild $guildId" } },
                             )
                         }, { e ->
                             logger.error(e) { "Failed to open private channel for user $userId in guild $guildId" }
@@ -1149,18 +1218,20 @@ class LevelService(
                     }
                 }
                 announceMode.isCustomChannel() -> {
-                    val customChannelId = try {
-                        newSuspendedTransaction {
-                            LevelingSettings
-                                .selectAll().where { LevelingSettings.guildId eq guildId }
-                                .limit(1)
-                                .map { it[LevelingSettings.levelupChannel] }
-                                .firstOrNull()
+                    val customChannelId =
+                        try {
+                            newSuspendedTransaction {
+                                LevelingSettings
+                                    .selectAll()
+                                    .where { LevelingSettings.guildId eq guildId }
+                                    .limit(1)
+                                    .map { it[LevelingSettings.levelupChannel] }
+                                    .firstOrNull()
+                            }
+                        } catch (e: Exception) {
+                            logger.error(e) { "Failed to get custom channel ID for guild $guildId, no level-up message will be sent" }
+                            null
                         }
-                    } catch (e: Exception) {
-                        logger.error(e) { "Failed to get custom channel ID for guild $guildId, no level-up message will be sent" }
-                        null
-                    }
 
                     if (customChannelId != null) {
                         try {
@@ -1168,13 +1239,23 @@ class LevelService(
                             if (customChannel != null) {
                                 customChannel.sendMessage(message).queue(
                                     { logger.debug { "Sent level-up message to custom channel $customChannelId in guild $guildId" } },
-                                    { e -> logger.error(e) { "Failed to send level-up message to custom channel $customChannelId in guild $guildId, no message will be sent" } }
+                                    { e ->
+                                        logger.error(
+                                            e,
+                                        ) {
+                                            "Failed to send level-up message to custom channel $customChannelId in guild $guildId, no message will be sent"
+                                        }
+                                    },
                                 )
                             } else {
-                                logger.warn { "Custom channel $customChannelId not found in guild $guildId, no level-up message will be sent" }
+                                logger.warn {
+                                    "Custom channel $customChannelId not found in guild $guildId, no level-up message will be sent"
+                                }
                             }
                         } catch (e: Exception) {
-                            logger.error(e) { "Error sending to custom channel $customChannelId in guild $guildId, no level-up message will be sent" }
+                            logger.error(
+                                e,
+                            ) { "Error sending to custom channel $customChannelId in guild $guildId, no level-up message will be sent" }
                         }
                     } else {
                         logger.warn { "No custom channel configured for guild $guildId, no level-up message will be sent" }
@@ -1184,7 +1265,7 @@ class LevelService(
                     try {
                         channel.sendMessage(message).queue(
                             { logger.debug { "Sent level-up message to current channel in guild $guildId" } },
-                            { e -> logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" } }
+                            { e -> logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" } },
                         )
                     } catch (e: Exception) {
                         logger.error(e) { "Failed to send level-up message to current channel in guild $guildId" }
@@ -1200,7 +1281,7 @@ class LevelService(
                     try {
                         guild.addRoleToMember(member, role).queue(
                             { logger.debug { "Assigned role ${role.name} to user $userId in guild $guildId" } },
-                            { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } }
+                            { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } },
                         )
                     } catch (e: Exception) {
                         logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" }
@@ -1219,24 +1300,29 @@ class LevelService(
      * @param userId The ID of the user to check the ping status for.
      * @return Returns true if the ping feature is enabled for the user in the specified guild, false otherwise.
      */
-    private suspend fun isPingEnabled(guildId: Long, userId: Long): Boolean {
+    private suspend fun isPingEnabled(
+        guildId: Long,
+        userId: Long,
+    ): Boolean {
         val cacheKey = "leveling:ping:$guildId:$userId"
         val cachedPing = redisClient.get(cacheKey)?.toBoolean()
         if (cachedPing != null) {
             logger.debug { "Found cached ping setting for user $userId in guild $guildId: $cachedPing" }
             return cachedPing
         }
-        val pingEnabled = try {
-            newSuspendedTransaction {
-                LevelingUsers.selectAll()
-                    .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
-                    .map { it[LevelingUsers.pingActive] }
-                    .firstOrNull() ?: false
+        val pingEnabled =
+            try {
+                newSuspendedTransaction {
+                    LevelingUsers
+                        .selectAll()
+                        .where(LevelingUsers.guildId eq guildId and (LevelingUsers.userId eq userId))
+                        .map { it[LevelingUsers.pingActive] }
+                        .firstOrNull() ?: false
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Failed to get ping setting for user $userId in guild $guildId, defaulting to false" }
+                false
             }
-        } catch (e: Exception) {
-            logger.error(e) { "Failed to get ping setting for user $userId in guild $guildId, defaulting to false" }
-            false
-        }
         return pingEnabled
     }
 
@@ -1247,7 +1333,11 @@ class LevelService(
      * @param userId The ID of the user whose ping setting is being toggled.
      * @param enabled A boolean indicating whether ping notifications should be enabled or disabled.
      */
-    private suspend fun togglePingEnabled(guildId: Long, userId: Long, enabled: Boolean) {
+    private suspend fun togglePingEnabled(
+        guildId: Long,
+        userId: Long,
+        enabled: Boolean,
+    ) {
         val cacheKey = "leveling:ping:$guildId:$userId"
         redisClient.setWithExpiry(cacheKey, enabled.toString(), 4.hours.inWholeSeconds)
 
@@ -1278,26 +1368,19 @@ class LevelService(
     suspend fun dropGuildCaches(guildId: Long) {
         logger.info { "Dropping all caches for guild $guildId" }
 
-        
         dropLevelUpMessageCache(guildId)
         dropLevelUpRewardMessageCache(guildId)
 
-        
         dropLevelUpAnnounceModeCache(guildId)
 
-        
         dropRewardRolesCache(guildId)
 
-        
         dropLastMessageChannelCache(guildId)
 
-        
         dropXpMultiplierCache(guildId)
 
-        
         dropRoleMultipliersCache(guildId)
 
-        
         dropFilterModeCache(guildId)
         dropAllFilteredChannelCaches(guildId)
         dropAllFilteredRoleCaches(guildId)
@@ -1366,7 +1449,10 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param userId The ID of the user
      */
-    suspend fun dropPingEnabledCache(guildId: Long, userId: Long) {
+    suspend fun dropPingEnabledCache(
+        guildId: Long,
+        userId: Long,
+    ) {
         val cacheKey = "leveling:ping:$guildId:$userId"
         redisClient.delete(cacheKey)
         logger.debug { "Dropped ping enabled cache for user $userId in guild $guildId" }
@@ -1378,7 +1464,10 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param userId The ID of the user
      */
-    suspend fun dropXpRuntimeCache(guildId: Long, userId: Long) {
+    suspend fun dropXpRuntimeCache(
+        guildId: Long,
+        userId: Long,
+    ) {
         val cacheKey = "xp:runtimecache:$guildId:$userId"
         redisClient.delete(cacheKey)
         logger.debug { "Dropped XP runtime cache for user $userId in guild $guildId" }
@@ -1423,7 +1512,10 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param channelId The ID of the channel
      */
-    suspend fun dropFilteredChannelCache(guildId: Long, channelId: Long) {
+    suspend fun dropFilteredChannelCache(
+        guildId: Long,
+        channelId: Long,
+    ) {
         val cacheKey = "filter:channel:$guildId:$channelId"
         redisClient.delete(cacheKey)
         logger.debug { "Dropped filtered channel cache for channel $channelId in guild $guildId" }
@@ -1463,16 +1555,16 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param userId The ID of the user
      */
-    suspend fun dropUserCaches(guildId: Long, userId: Long) {
+    suspend fun dropUserCaches(
+        guildId: Long,
+        userId: Long,
+    ) {
         logger.info { "Dropping all caches for user $userId in guild $guildId" }
 
-        
         dropPingEnabledCache(guildId, userId)
 
-        
         dropXpRuntimeCache(guildId, userId)
 
-        
         val cooldownKeyPattern = "xp:cooldown:$guildId:$userId:*"
         val cooldownKeys = redisClient.getKeysByPattern(cooldownKeyPattern)
         cooldownKeys.forEach { redisClient.delete(it) }
@@ -1483,7 +1575,7 @@ class LevelService(
 
     /**
      * Assigns reward roles to a user who has leveled up.
-     * 
+     *
      * This helper method handles the role assignment logic separately from message sending,
      * allowing roles to be assigned even when level-up announcements are disabled.
      *
@@ -1492,69 +1584,81 @@ class LevelService(
      * @param level The user's new level
      * @param oldLevel The user's previous level
      */
-    private suspend fun assignRewardRoles(userId: Long, guildId: Long, level: Int, oldLevel: Int) {
+    private suspend fun assignRewardRoles(
+        userId: Long,
+        guildId: Long,
+        level: Int,
+        oldLevel: Int,
+    ) {
         try {
             if (level <= oldLevel) {
-                logger.debug { "Not assigning roles for user $userId in guild $guildId as level ($level) is not greater than old level ($oldLevel)" }
+                logger.debug {
+                    "Not assigning roles for user $userId in guild $guildId as level ($level) is not greater than old level ($oldLevel)"
+                }
                 return
             }
 
             val jda = context.jda
-            val guild = try {
-                jda.getGuildById(guildId) ?: run {
-                    logger.error { "Failed to get guild $guildId for role assignment, guild not found" }
+            val guild =
+                try {
+                    jda.getGuildById(guildId) ?: run {
+                        logger.error { "Failed to get guild $guildId for role assignment, guild not found" }
+                        return
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get guild $guildId for role assignment due to exception" }
                     return
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get guild $guildId for role assignment due to exception" }
-                return
-            }
 
-            val user = try {
-                jda.getUserById(userId) ?: run {
-                    logger.error { "Failed to get user $userId for role assignment, user not found" }
+            val user =
+                try {
+                    jda.getUserById(userId) ?: run {
+                        logger.error { "Failed to get user $userId for role assignment, user not found" }
+                        return
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get user $userId for role assignment due to exception" }
                     return
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get user $userId for role assignment due to exception" }
-                return
-            }
 
-            val member = try {
-                guild.getMember(user) ?: run {
-                    logger.error { "Failed to get member for user $userId in guild $guildId for role assignment, member not found" }
+            val member =
+                try {
+                    guild.getMember(user) ?: run {
+                        logger.error { "Failed to get member for user $userId in guild $guildId for role assignment, member not found" }
+                        return
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get member for user $userId in guild $guildId for role assignment due to exception" }
                     return
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get member for user $userId in guild $guildId for role assignment due to exception" }
-                return
-            }
 
-            val rewardRoles = try {
-                getRewardRoles(guildId).filter { it.level == level }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to get reward roles for guild $guildId, defaulting to empty list" }
-                emptyList()
-            }
+            val rewardRoles =
+                try {
+                    getRewardRoles(guildId).filter { it.level == level }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to get reward roles for guild $guildId, defaulting to empty list" }
+                    emptyList()
+                }
 
             if (rewardRoles.isEmpty()) {
                 logger.debug { "No reward roles found for level $level in guild $guildId" }
                 return
             }
 
-            val rewardRoleObjects = try {
-                rewardRoles.mapNotNull { 
-                    try {
-                        guild.getRoleById(it.roleId)
-                    } catch (e: Exception) {
-                        logger.error(e) { "Failed to get role ${it.roleId} in guild $guildId for role assignment" }
-                        null
+            val rewardRoleObjects =
+                try {
+                    rewardRoles.mapNotNull {
+                        try {
+                            guild.getRoleById(it.roleId)
+                        } catch (e: Exception) {
+                            logger.error(e) { "Failed to get role ${it.roleId} in guild $guildId for role assignment" }
+                            null
+                        }
                     }
+                } catch (e: Exception) {
+                    logger.error(e) { "Failed to map reward roles to role objects for guild $guildId" }
+                    emptyList()
                 }
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to map reward roles to role objects for guild $guildId" }
-                emptyList()
-            }
 
             if (rewardRoleObjects.isEmpty()) {
                 logger.debug { "No valid reward role objects found for level $level in guild $guildId" }
@@ -1566,7 +1670,7 @@ class LevelService(
                 try {
                     guild.addRoleToMember(member, role).queue(
                         { logger.debug { "Assigned role ${role.name} to user $userId in guild $guildId" } },
-                        { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } }
+                        { e -> logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId" } },
                     )
                 } catch (e: Exception) {
                     logger.error(e) { "Failed to assign role ${role.name} to user $userId in guild $guildId due to exception" }
@@ -1614,7 +1718,7 @@ class LevelService(
         oldLevel: Int,
         xp: Int,
         rewardRoles: List<Role> = emptyList(),
-        oldXp: Int = 0
+        oldXp: Int = 0,
     ): String {
         var result = template
 
@@ -1648,13 +1752,14 @@ class LevelService(
      * @param level The level for which to fetch the reward roles.
      * @return A list of reward roles that match the specified level in the guild.
      */
-    suspend fun getRewardRoleForLevel(guildId: Long, level: Int): List<RewardRole> {
-        return getRewardRoles(guildId).filter { it.level == level }
-    }
+    suspend fun getRewardRoleForLevel(
+        guildId: Long,
+        level: Int,
+    ): List<RewardRole> = getRewardRoles(guildId).filter { it.level == level }
 
     /**
      * Retrieves the list of role multipliers configured for a guild.
-     * 
+     *
      * This method fetches role multipliers that are applied to users with specific roles.
      * It first checks the Redis cache, and if not found, queries the database.
      * The results are cached for future use to improve performance.
@@ -1673,22 +1778,24 @@ class LevelService(
         }
 
         logger.debug { "No cached role multipliers found for guild $guildId, querying database" }
-        val dbMultipliers = newSuspendedTransaction {
-            LevelingRoles.selectAll()
-                .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleType eq "multiplier"))
-                .mapNotNull {
-                    val multiplier = it[LevelingRoles.multiplier]
-                    if (multiplier != null) {
-                        RoleMultiplier(
-                            guildId = it[LevelingRoles.guildId],
-                            roleId = it[LevelingRoles.roleId],
-                            multiplier = multiplier
-                        )
-                    } else {
-                        null
+        val dbMultipliers =
+            newSuspendedTransaction {
+                LevelingRoles
+                    .selectAll()
+                    .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleType eq "multiplier"))
+                    .mapNotNull {
+                        val multiplier = it[LevelingRoles.multiplier]
+                        if (multiplier != null) {
+                            RoleMultiplier(
+                                guildId = it[LevelingRoles.guildId],
+                                roleId = it[LevelingRoles.roleId],
+                                multiplier = multiplier,
+                            )
+                        } else {
+                            null
+                        }
                     }
-                }
-        }
+            }
 
         if (dbMultipliers.isEmpty()) {
             logger.debug { "No role multipliers found in database for guild $guildId" }
@@ -1702,7 +1809,7 @@ class LevelService(
 
     /**
      * Sets or updates a multiplier for a specific role in a guild.
-     * 
+     *
      * This method adds a new role multiplier or updates an existing one in the database.
      * It also invalidates the cache for role multipliers in the guild.
      *
@@ -1711,7 +1818,11 @@ class LevelService(
      * @param multiplier The multiplier value to set (must be >= 0.0)
      * @return True if the operation was successful, false otherwise
      */
-    suspend fun setRoleMultiplier(guildId: Long, roleId: Long, multiplier: Double): Boolean {
+    suspend fun setRoleMultiplier(
+        guildId: Long,
+        roleId: Long,
+        multiplier: Double,
+    ): Boolean {
         if (multiplier < 0.0) {
             logger.error { "Cannot set role multiplier to negative value: $multiplier" }
             return false
@@ -1719,23 +1830,24 @@ class LevelService(
 
         try {
             newSuspendedTransaction {
-
-                val existingMultiplier = LevelingRoles.selectAll()
-                    .where((LevelingRoles.guildId eq guildId) and (LevelingRoles.roleId eq roleId) and (LevelingRoles.roleType eq "multiplier"))
-                    .singleOrNull()
+                val existingMultiplier =
+                    LevelingRoles
+                        .selectAll()
+                        .where(
+                            (LevelingRoles.guildId eq guildId) and (LevelingRoles.roleId eq roleId) and
+                                (LevelingRoles.roleType eq "multiplier"),
+                        ).singleOrNull()
 
                 if (existingMultiplier != null) {
-
-                    LevelingRoles.update({ 
-                        (LevelingRoles.guildId eq guildId) and 
-                        (LevelingRoles.roleId eq roleId) and 
-                        (LevelingRoles.roleType eq "multiplier") 
+                    LevelingRoles.update({
+                        (LevelingRoles.guildId eq guildId) and
+                            (LevelingRoles.roleId eq roleId) and
+                            (LevelingRoles.roleType eq "multiplier")
                     }) {
                         it[LevelingRoles.multiplier] = multiplier
                     }
                     logger.debug { "Updated multiplier for role $roleId in guild $guildId to $multiplier" }
                 } else {
-
                     LevelingRoles.insert {
                         it[LevelingRoles.guildId] = guildId
                         it[LevelingRoles.roleId] = roleId
@@ -1759,23 +1871,26 @@ class LevelService(
 
     /**
      * Removes a role multiplier from the database.
-     * 
+     *
      * This method deletes a role multiplier from the database and invalidates the cache.
      *
      * @param guildId The ID of the guild
      * @param roleId The ID of the role to remove the multiplier for
      * @return True if the operation was successful, false otherwise
      */
-    suspend fun removeRoleMultiplier(guildId: Long, roleId: Long): Boolean {
+    suspend fun removeRoleMultiplier(
+        guildId: Long,
+        roleId: Long,
+    ): Boolean {
         try {
-            val deleted = newSuspendedTransaction {
-                LevelingRoles.deleteWhere { 
-                    (LevelingRoles.guildId eq guildId) and 
-                    (LevelingRoles.roleId eq roleId) and 
-                    (LevelingRoles.roleType eq "multiplier") 
+            val deleted =
+                newSuspendedTransaction {
+                    LevelingRoles.deleteWhere {
+                        (LevelingRoles.guildId eq guildId) and
+                            (LevelingRoles.roleId eq roleId) and
+                            (LevelingRoles.roleType eq "multiplier")
+                    }
                 }
-            }
-
 
             val cacheKey = "rolemultipliers:$guildId"
             redisClient.delete(cacheKey)
@@ -1790,18 +1905,21 @@ class LevelService(
 
     /**
      * Calculates the role multiplier for a user based on their roles.
-     * 
+     *
      * This method retrieves all role multipliers for a guild and then either:
      * 1. Finds the highest multiplier among the roles that the user has (default behavior)
      * 2. Multiplies all role multipliers together (if stacking is enabled)
-     * 
+     *
      * If the user has no roles with multipliers, the default multiplier (1.0) is returned.
      *
      * @param guildId The ID of the guild
      * @param roleIds The IDs of the roles the user has
      * @return The calculated multiplier value based on the guild's stacking preference
      */
-    suspend fun getRoleMultiplier(guildId: Long, roleIds: List<Long>): Double {
+    suspend fun getRoleMultiplier(
+        guildId: Long,
+        roleIds: List<Long>,
+    ): Double {
         if (roleIds.isEmpty()) {
             return RoleMultiplier.DEFAULT_MULTIPLIER
         }
@@ -1816,17 +1934,14 @@ class LevelService(
             return RoleMultiplier.DEFAULT_MULTIPLIER
         }
 
-
         val multiplierSettings = getXpMultiplier(guildId)
         val stackMultipliers = multiplierSettings.stackRoleMultipliers
 
         return if (stackMultipliers) {
-
             userRoleMultipliers.fold(RoleMultiplier.DEFAULT_MULTIPLIER) { acc, roleMultiplier ->
                 acc * roleMultiplier.multiplier
             }
         } else {
-
             userRoleMultipliers.maxOf { it.multiplier }
         }
     }
@@ -1849,29 +1964,28 @@ class LevelService(
             return cachedMultiplier
         }
 
-        val multiplier = newSuspendedTransaction {
-            LevelingSettings
-                .selectAll()
-                .where(LevelingSettings.guildId eq guildId)
-                .map {
-                    XpMultiplier(
-                        guildId = it[LevelingSettings.guildId],
-                        vcMultiplier = it[LevelingSettings.vcMulti],
-                        textMultiplier = it[LevelingSettings.textMulti],
-                        textEnabled = it[LevelingSettings.textEnabled],
-                        vcEnabled = it[LevelingSettings.vcEnabled],
-                        stackRoleMultipliers = it[LevelingSettings.stackRoleMultipliers]
-                    )
-                }
-                .firstOrNull() ?: XpMultiplier(guildId)
-        }
+        val multiplier =
+            newSuspendedTransaction {
+                LevelingSettings
+                    .selectAll()
+                    .where(LevelingSettings.guildId eq guildId)
+                    .map {
+                        XpMultiplier(
+                            guildId = it[LevelingSettings.guildId],
+                            vcMultiplier = it[LevelingSettings.vcMulti],
+                            textMultiplier = it[LevelingSettings.textMulti],
+                            textEnabled = it[LevelingSettings.textEnabled],
+                            vcEnabled = it[LevelingSettings.vcEnabled],
+                            stackRoleMultipliers = it[LevelingSettings.stackRoleMultipliers],
+                        )
+                    }.firstOrNull() ?: XpMultiplier(guildId)
+            }
         logger.trace { "Retrieved XP multiplier for guild $guildId: $multiplier" }
 
         redisClient.setTypedWithExpiry(cacheKey, multiplier, 300, XpMultiplier.serializer())
 
         return multiplier
     }
-
 
     /**
      * Retrieves the rank of a user within a specified guild based on their XP.
@@ -1884,38 +1998,44 @@ class LevelService(
      * @param userId The ID of the user whose rank is being retrieved.
      * @return A [Experience] object containing the user's rank, XP, level, and associated IDs.
      */
-    suspend fun getExperience(guildId: Long, userId: Long): Experience = newSuspendedTransaction {
-        val userRow = LevelingUsers
-            .selectAll()
-            .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.userId eq userId) }
-            .singleOrNull()
-            ?: run {
-                LevelingUsers.insert {
-                    it[LevelingUsers.guildId] = guildId
-                    it[LevelingUsers.userId] = userId
-                }
-
+    suspend fun getExperience(
+        guildId: Long,
+        userId: Long,
+    ): Experience =
+        newSuspendedTransaction {
+            val userRow =
                 LevelingUsers
                     .selectAll()
                     .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.userId eq userId) }
-                    .single()
-            }
+                    .singleOrNull()
+                    ?: run {
+                        LevelingUsers.insert {
+                            it[LevelingUsers.guildId] = guildId
+                            it[LevelingUsers.userId] = userId
+                        }
 
-        val userXp = userRow[LevelingUsers.xp]
+                        LevelingUsers
+                            .selectAll()
+                            .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.userId eq userId) }
+                            .single()
+                    }
 
-        val higherXpCount = LevelingUsers
-            .selectAll()
-            .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
-            .count()
+            val userXp = userRow[LevelingUsers.xp]
 
-        Experience(
-            userId = userId,
-            guildId = guildId,
-            level = levelAtXp(userXp),
-            xp = userXp,
-            rank = higherXpCount + 1
-        )
-    }
+            val higherXpCount =
+                LevelingUsers
+                    .selectAll()
+                    .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
+                    .count()
+
+            Experience(
+                userId = userId,
+                guildId = guildId,
+                level = levelAtXp(userXp),
+                xp = userXp,
+                rank = higherXpCount + 1,
+            )
+        }
 
     /**
      * Gets the filter mode for a guild.
@@ -1937,13 +2057,14 @@ class LevelService(
         }
 
         logger.debug { "No cached filter mode found for guild $guildId, querying database" }
-        val mode = newSuspendedTransaction {
-            LevelingSettings
-                .selectAll()
-                .where(LevelingSettings.guildId eq guildId)
-                .map { it[LevelingSettings.filterMode] }
-                .firstOrNull() ?: FilterMode.DENYLIST.value
-        }
+        val mode =
+            newSuspendedTransaction {
+                LevelingSettings
+                    .selectAll()
+                    .where(LevelingSettings.guildId eq guildId)
+                    .map { it[LevelingSettings.filterMode] }
+                    .firstOrNull() ?: FilterMode.DENYLIST.value
+            }
 
         redisClient.setWithExpiry(cacheKey, mode, 4.hours.inWholeSeconds)
         logger.debug { "Cached filter mode for guild $guildId: $mode" }
@@ -1957,14 +2078,18 @@ class LevelService(
      * @param guildId The ID of the guild to set the filter mode for
      * @param mode The FilterMode to set (DENYLIST or ALLOWLIST)
      */
-    suspend fun setFilterMode(guildId: Long, mode: FilterMode) {
+    suspend fun setFilterMode(
+        guildId: Long,
+        mode: FilterMode,
+    ) {
         val cacheKey = "filter:mode:$guildId"
 
         newSuspendedTransaction {
-            val exists = LevelingSettings
-                .selectAll()
-                .where(LevelingSettings.guildId eq guildId)
-                .count() > 0
+            val exists =
+                LevelingSettings
+                    .selectAll()
+                    .where(LevelingSettings.guildId eq guildId)
+                    .count() > 0
 
             if (exists) {
                 LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
@@ -1978,9 +2103,7 @@ class LevelService(
             }
         }
 
-
         redisClient.setWithExpiry(cacheKey, mode.value, 4.hours.inWholeSeconds)
-
 
         dropAllFilteredChannelCaches(guildId)
         dropAllFilteredRoleCaches(guildId)
@@ -1994,14 +2117,18 @@ class LevelService(
      * @param guildId The ID of the guild to set the stacking preference for
      * @param stackMultipliers True to stack/multiply all role multipliers, false to use only the highest
      */
-    suspend fun setStackRoleMultipliers(guildId: Long, stackMultipliers: Boolean) {
+    suspend fun setStackRoleMultipliers(
+        guildId: Long,
+        stackMultipliers: Boolean,
+    ) {
         val cacheKey = "xp:multiplier:$guildId"
 
         newSuspendedTransaction {
-            val exists = LevelingSettings
-                .selectAll()
-                .where(LevelingSettings.guildId eq guildId)
-                .count() > 0
+            val exists =
+                LevelingSettings
+                    .selectAll()
+                    .where(LevelingSettings.guildId eq guildId)
+                    .count() > 0
 
             if (exists) {
                 LevelingSettings.update({ LevelingSettings.guildId eq guildId }) {
@@ -2015,7 +2142,6 @@ class LevelService(
             }
         }
 
-
         redisClient.delete(cacheKey)
 
         logger.info { "Set role multiplier stacking for guild $guildId to $stackMultipliers and invalidated XP multiplier cache" }
@@ -2028,7 +2154,10 @@ class LevelService(
      * @param channelId The ID of the channel to check
      * @return True if the channel is allowed to earn XP, false otherwise
      */
-    suspend fun isChannelAllowed(guildId: Long, channelId: Long): Boolean {
+    suspend fun isChannelAllowed(
+        guildId: Long,
+        channelId: Long,
+    ): Boolean {
         val filterMode = getFilterMode(guildId)
         val cacheKey = "filter:channel:$guildId:$channelId"
 
@@ -2038,22 +2167,24 @@ class LevelService(
             return cachedResult
         }
 
-        val isInFilterList = newSuspendedTransaction {
-            LevelingFilteredChannels
-                .selectAll()
-                .where(LevelingFilteredChannels.guildId eq guildId and (LevelingFilteredChannels.channelId eq channelId))
-                .count() > 0
-        }
+        val isInFilterList =
+            newSuspendedTransaction {
+                LevelingFilteredChannels
+                    .selectAll()
+                    .where(LevelingFilteredChannels.guildId eq guildId and (LevelingFilteredChannels.channelId eq channelId))
+                    .count() > 0
+            }
 
-
-
-        val isAllowed = when (filterMode) {
-            FilterMode.DENYLIST -> !isInFilterList
-            FilterMode.ALLOWLIST -> isInFilterList
-        }
+        val isAllowed =
+            when (filterMode) {
+                FilterMode.DENYLIST -> !isInFilterList
+                FilterMode.ALLOWLIST -> isInFilterList
+            }
 
         redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
-        logger.debug { "Channel $channelId in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, in filter list: $isInFilterList)" }
+        logger.debug {
+            "Channel $channelId in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, in filter list: $isInFilterList)"
+        }
 
         return isAllowed
     }
@@ -2065,18 +2196,17 @@ class LevelService(
      * @param roleIds The IDs of the roles to check
      * @return True if the user with these roles is allowed to earn XP, false otherwise
      */
-    suspend fun isRoleAllowed(guildId: Long, roleIds: List<Long>): Boolean {
+    suspend fun isRoleAllowed(
+        guildId: Long,
+        roleIds: List<Long>,
+    ): Boolean {
         if (roleIds.isEmpty()) {
-
             val filterMode = getFilterMode(guildId)
             return filterMode == FilterMode.DENYLIST
         }
 
-
-
         val sortedRoleIds = roleIds.sorted().joinToString("-")
         val cacheKey = "filter:role:$guildId:$sortedRoleIds"
-
 
         val cachedResult = redisClient.get(cacheKey)?.toBoolean()
         if (cachedResult != null) {
@@ -2086,27 +2216,27 @@ class LevelService(
 
         val filterMode = getFilterMode(guildId)
 
-        val filteredRoles = newSuspendedTransaction {
-            LevelingFilteredRoles
-                .selectAll()
-                .where(LevelingFilteredRoles.guildId eq guildId)
-                .map { it[LevelingFilteredRoles.roleId] }
-                .toSet()
-        }
-
+        val filteredRoles =
+            newSuspendedTransaction {
+                LevelingFilteredRoles
+                    .selectAll()
+                    .where(LevelingFilteredRoles.guildId eq guildId)
+                    .map { it[LevelingFilteredRoles.roleId] }
+                    .toSet()
+            }
 
         val hasFilteredRole = roleIds.any { it in filteredRoles }
 
-
-
-        val isAllowed = when (filterMode) {
-            FilterMode.DENYLIST -> !hasFilteredRole
-            FilterMode.ALLOWLIST -> hasFilteredRole
-        }
-
+        val isAllowed =
+            when (filterMode) {
+                FilterMode.DENYLIST -> !hasFilteredRole
+                FilterMode.ALLOWLIST -> hasFilteredRole
+            }
 
         redisClient.setWithExpiry(cacheKey, isAllowed.toString(), 4.hours.inWholeSeconds)
-        logger.debug { "User with roles $roleIds in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, has filtered role: $hasFilteredRole)" }
+        logger.debug {
+            "User with roles $roleIds in guild $guildId is ${if (isAllowed) "allowed" else "not allowed"} to earn XP (mode: ${filterMode.value}, has filtered role: $hasFilteredRole)"
+        }
 
         return isAllowed
     }
@@ -2117,12 +2247,16 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param channelId The ID of the channel to add to the filter list
      */
-    suspend fun addFilteredChannel(guildId: Long, channelId: Long) {
+    suspend fun addFilteredChannel(
+        guildId: Long,
+        channelId: Long,
+    ) {
         newSuspendedTransaction {
-            val exists = LevelingFilteredChannels
-                .selectAll()
-                .where(LevelingFilteredChannels.guildId eq guildId and (LevelingFilteredChannels.channelId eq channelId))
-                .count() > 0
+            val exists =
+                LevelingFilteredChannels
+                    .selectAll()
+                    .where(LevelingFilteredChannels.guildId eq guildId and (LevelingFilteredChannels.channelId eq channelId))
+                    .count() > 0
 
             if (!exists) {
                 LevelingFilteredChannels.insert {
@@ -2133,7 +2267,6 @@ class LevelService(
             }
         }
 
-
         redisClient.delete("filter:channel:$guildId:$channelId")
     }
 
@@ -2143,13 +2276,15 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param channelId The ID of the channel to remove from the filter list
      */
-    suspend fun removeFilteredChannel(guildId: Long, channelId: Long) {
+    suspend fun removeFilteredChannel(
+        guildId: Long,
+        channelId: Long,
+    ) {
         newSuspendedTransaction {
             LevelingFilteredChannels.deleteWhere {
                 (LevelingFilteredChannels.guildId eq guildId) and (LevelingFilteredChannels.channelId eq channelId)
             }
         }
-
 
         redisClient.delete("filter:channel:$guildId:$channelId")
         logger.info { "Removed channel $channelId from filter list for guild $guildId" }
@@ -2161,12 +2296,16 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param roleId The ID of the role to add to the filter list
      */
-    suspend fun addFilteredRole(guildId: Long, roleId: Long) {
+    suspend fun addFilteredRole(
+        guildId: Long,
+        roleId: Long,
+    ) {
         newSuspendedTransaction {
-            val exists = LevelingFilteredRoles
-                .selectAll()
-                .where(LevelingFilteredRoles.guildId eq guildId and (LevelingFilteredRoles.roleId eq roleId))
-                .count() > 0
+            val exists =
+                LevelingFilteredRoles
+                    .selectAll()
+                    .where(LevelingFilteredRoles.guildId eq guildId and (LevelingFilteredRoles.roleId eq roleId))
+                    .count() > 0
 
             if (!exists) {
                 LevelingFilteredRoles.insert {
@@ -2177,7 +2316,6 @@ class LevelService(
             }
         }
 
-
         dropAllFilteredRoleCaches(guildId)
     }
 
@@ -2187,13 +2325,15 @@ class LevelService(
      * @param guildId The ID of the guild
      * @param roleId The ID of the role to remove from the filter list
      */
-    suspend fun removeFilteredRole(guildId: Long, roleId: Long) {
+    suspend fun removeFilteredRole(
+        guildId: Long,
+        roleId: Long,
+    ) {
         newSuspendedTransaction {
             LevelingFilteredRoles.deleteWhere {
                 (LevelingFilteredRoles.guildId eq guildId) and (LevelingFilteredRoles.roleId eq roleId)
             }
         }
-
 
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
@@ -2223,69 +2363,80 @@ class LevelService(
                 return """{"error": "Guild not found", "guildId": $guildId}"""
             }
 
-            
+            val jsonString =
+                kotlinx.serialization.json.Json.encodeToString(
+                    kotlinx.serialization.json.JsonObject
+                        .serializer(),
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("id", kotlinx.serialization.json.JsonPrimitive(guild.id))
+                        put("name", kotlinx.serialization.json.JsonPrimitive(guild.name))
+                        put("memberCount", kotlinx.serialization.json.JsonPrimitive(guild.memberCount))
+                        put("ownerId", kotlinx.serialization.json.JsonPrimitive(guild.ownerId))
 
-            
-            val jsonString = kotlinx.serialization.json.Json.encodeToString(
-                kotlinx.serialization.json.JsonObject.serializer(),
-                kotlinx.serialization.json.buildJsonObject {
-                    put("id", kotlinx.serialization.json.JsonPrimitive(guild.id))
-                    put("name", kotlinx.serialization.json.JsonPrimitive(guild.name))
-                    put("memberCount", kotlinx.serialization.json.JsonPrimitive(guild.memberCount))
-                    put("ownerId", kotlinx.serialization.json.JsonPrimitive(guild.ownerId))
+                        put(
+                            "roles",
+                            kotlinx.serialization.json.buildJsonArray {
+                                guild.roles.forEach { role ->
+                                    add(
+                                        kotlinx.serialization.json.buildJsonObject {
+                                            put("id", kotlinx.serialization.json.JsonPrimitive(role.id))
+                                            put("name", kotlinx.serialization.json.JsonPrimitive(role.name))
+                                            put("color", kotlinx.serialization.json.JsonPrimitive(role.colorRaw))
+                                            put("position", kotlinx.serialization.json.JsonPrimitive(role.position))
+                                            put("isHoisted", kotlinx.serialization.json.JsonPrimitive(role.isHoisted))
+                                            put("isMentionable", kotlinx.serialization.json.JsonPrimitive(role.isMentionable))
+                                        },
+                                    )
+                                }
+                            },
+                        )
 
-                    
-                    put("roles", kotlinx.serialization.json.buildJsonArray {
-                        guild.roles.forEach { role ->
-                            add(kotlinx.serialization.json.buildJsonObject {
-                                put("id", kotlinx.serialization.json.JsonPrimitive(role.id))
-                                put("name", kotlinx.serialization.json.JsonPrimitive(role.name))
-                                put("color", kotlinx.serialization.json.JsonPrimitive(role.colorRaw))
-                                put("position", kotlinx.serialization.json.JsonPrimitive(role.position))
-                                put("isHoisted", kotlinx.serialization.json.JsonPrimitive(role.isHoisted))
-                                put("isMentionable", kotlinx.serialization.json.JsonPrimitive(role.isMentionable))
-                            })
-                        }
-                    })
+                        put(
+                            "channels",
+                            kotlinx.serialization.json.buildJsonArray {
+                                guild.channels.forEach { channel ->
+                                    add(
+                                        kotlinx.serialization.json.buildJsonObject {
+                                            put("id", kotlinx.serialization.json.JsonPrimitive(channel.id))
+                                            put("name", kotlinx.serialization.json.JsonPrimitive(channel.name))
+                                            put("type", kotlinx.serialization.json.JsonPrimitive(channel.type.name))
+                                        },
+                                    )
+                                }
+                            },
+                        )
 
-                    
-                    put("channels", kotlinx.serialization.json.buildJsonArray {
-                        guild.channels.forEach { channel ->
-                            add(kotlinx.serialization.json.buildJsonObject {
-                                put("id", kotlinx.serialization.json.JsonPrimitive(channel.id))
-                                put("name", kotlinx.serialization.json.JsonPrimitive(channel.name))
-                                put("type", kotlinx.serialization.json.JsonPrimitive(channel.type.name))
-                            })
-                        }
-                    })
+                        put(
+                            "levelingSettings",
+                            kotlinx.serialization.json.buildJsonObject {
+                                val xpMultiplier = getXpMultiplier(guildId)
+                                put("textEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textEnabled))
+                                put("textMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textMultiplier))
+                                put("vcEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcEnabled))
+                                put("vcMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcMultiplier))
+                                put("stackRoleMultipliers", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.stackRoleMultipliers))
 
-                    
-                    put("levelingSettings", kotlinx.serialization.json.buildJsonObject {
-                        
-                        val xpMultiplier = getXpMultiplier(guildId)
-                        put("textEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textEnabled))
-                        put("textMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textMultiplier))
-                        put("vcEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcEnabled))
-                        put("vcMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcMultiplier))
-                        put("stackRoleMultipliers", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.stackRoleMultipliers))
+                                val filterMode = getFilterMode(guildId)
+                                put("filterMode", kotlinx.serialization.json.JsonPrimitive(filterMode.value))
 
-                        
-                        val filterMode = getFilterMode(guildId)
-                        put("filterMode", kotlinx.serialization.json.JsonPrimitive(filterMode.value))
-
-                        
-                        val rewardRoles = getRewardRoles(guildId)
-                        put("rewardRoles", kotlinx.serialization.json.buildJsonArray {
-                            rewardRoles.forEach { reward ->
-                                add(kotlinx.serialization.json.buildJsonObject {
-                                    put("roleId", kotlinx.serialization.json.JsonPrimitive(reward.roleId.toString()))
-                                    put("level", kotlinx.serialization.json.JsonPrimitive(reward.level))
-                                })
-                            }
-                        })
-                    })
-                }
-            )
+                                val rewardRoles = getRewardRoles(guildId)
+                                put(
+                                    "rewardRoles",
+                                    kotlinx.serialization.json.buildJsonArray {
+                                        rewardRoles.forEach { reward ->
+                                            add(
+                                                kotlinx.serialization.json.buildJsonObject {
+                                                    put("roleId", kotlinx.serialization.json.JsonPrimitive(reward.roleId.toString()))
+                                                    put("level", kotlinx.serialization.json.JsonPrimitive(reward.level))
+                                                },
+                                            )
+                                        }
+                                    },
+                                )
+                            },
+                        )
+                    },
+                )
             logger.debug { "Retrieved guild info for guild $guildId: ${jsonString.take(100)}..." }
 
             return jsonString
@@ -2295,14 +2446,14 @@ class LevelService(
         }
     }
 
-    suspend fun importMee6Data(guildId: Long) : Result {
+    suspend fun importMee6Data(guildId: Long): Result {
         val client = Mee6XpClient()
 
         val allUsers = client.getAllUsers(guildId)
 
         if (allUsers.isEmpty()) {
             logger.warn { "No users found in Mee6 data for guild $guildId" }
-            return Result(false, "No users found in Mee6 data for guild $guildId" )
+            return Result(false, "No users found in Mee6 data for guild $guildId")
         }
         resetLevelingProgressionsForGuild(guildId)
         logger.info { "Importing ${allUsers.size} users from Mee6 data for guild $guildId" }
@@ -2336,45 +2487,54 @@ class LevelService(
      * @param pageSize The number of users per page
      * @return A list of Experience objects for the users on the requested page
      */
-    suspend fun getLeaderboard(guildId: Long, page: Int = 1, pageSize: Int = 10): List<Experience> = newSuspendedTransaction {
-        val validPage = if (page < 1) 1 else page
-        val validPageSize = when {
-            pageSize < 1 -> 10
-            pageSize > 100 -> 100
-            else -> pageSize
-        }
+    suspend fun getLeaderboard(
+        guildId: Long,
+        page: Int = 1,
+        pageSize: Int = 10,
+    ): List<Experience> =
+        newSuspendedTransaction {
+            val validPage = if (page < 1) 1 else page
+            val validPageSize =
+                when {
+                    pageSize < 1 -> 10
+                    pageSize > 100 -> 100
+                    else -> pageSize
+                }
 
-        val offset = (validPage - 1) * validPageSize
+            val offset = (validPage - 1) * validPageSize
 
-        val query = LevelingUsers
-            .selectAll()
-            .where { LevelingUsers.guildId eq guildId }
-
-        val sortedQuery = query.orderBy(LevelingUsers.xp to SortOrder.DESC)
-
-        val users = sortedQuery
-            .limit(validPageSize)
-            .drop(offset)
-            .map { row ->
-                val userXp = row[LevelingUsers.xp]
-                val userId = row[LevelingUsers.userId]
-
-                val rank = LevelingUsers
+            val query =
+                LevelingUsers
                     .selectAll()
-                    .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
-                    .count() + 1
+                    .where { LevelingUsers.guildId eq guildId }
 
-                Experience(
-                    userId = userId,
-                    guildId = guildId,
-                    level = levelAtXp(userXp),
-                    xp = userXp,
-                    rank = rank
-                )
-            }
+            val sortedQuery = query.orderBy(LevelingUsers.xp to SortOrder.DESC)
 
-        users
-    }
+            val users =
+                sortedQuery
+                    .limit(validPageSize)
+                    .drop(offset)
+                    .map { row ->
+                        val userXp = row[LevelingUsers.xp]
+                        val userId = row[LevelingUsers.userId]
+
+                        val rank =
+                            LevelingUsers
+                                .selectAll()
+                                .where { (LevelingUsers.guildId eq guildId) and (LevelingUsers.xp greater userXp) }
+                                .count() + 1
+
+                        Experience(
+                            userId = userId,
+                            guildId = guildId,
+                            level = levelAtXp(userXp),
+                            xp = userXp,
+                            rank = rank,
+                        )
+                    }
+
+            users
+        }
 
     /**
      * Gets the total number of users with XP in a guild.
@@ -2382,10 +2542,11 @@ class LevelService(
      * @param guildId The ID of the guild
      * @return The total number of users
      */
-    suspend fun getLeaderboardUserCount(guildId: Long): Long = newSuspendedTransaction {
-        LevelingUsers
-            .selectAll()
-            .where { LevelingUsers.guildId eq guildId }
-            .count()
-    }
+    suspend fun getLeaderboardUserCount(guildId: Long): Long =
+        newSuspendedTransaction {
+            LevelingUsers
+                .selectAll()
+                .where { LevelingUsers.guildId eq guildId }
+                .count()
+        }
 }

@@ -6,7 +6,9 @@ package me.diamondforge.kyromera.bot.enums
  * This enum corresponds to the `levelup_announce_mode` column in the database,
  * which determines how and where level-up messages are announced.
  */
-enum class LevelUpAnnounceMode(val value: String) {
+enum class LevelUpAnnounceMode(
+    val value: String,
+) {
     /**
      * Level-up messages are disabled and will not be sent.
      */
@@ -25,7 +27,8 @@ enum class LevelUpAnnounceMode(val value: String) {
     /**
      * Level-up messages are sent to a custom channel configured for the guild.
      */
-    CUSTOM("custom");
+    CUSTOM("custom"),
+    ;
 
     companion object {
         /**
@@ -34,9 +37,7 @@ enum class LevelUpAnnounceMode(val value: String) {
          * @param value The string value to convert
          * @return The corresponding enum value, or CURRENT if the value is not recognized
          */
-        fun fromString(value: String): LevelUpAnnounceMode {
-            return values().find { it.value == value.lowercase() } ?: CURRENT
-        }
+        fun fromString(value: String): LevelUpAnnounceMode = values().find { it.value == value.lowercase() } ?: CURRENT
     }
 
     /**
@@ -44,34 +45,26 @@ enum class LevelUpAnnounceMode(val value: String) {
      *
      * @return True if announcements are enabled (not DISABLED), false otherwise
      */
-    fun isEnabled(): Boolean {
-        return this != DISABLED
-    }
+    fun isEnabled(): Boolean = this != DISABLED
 
     /**
      * Checks if level-up announcements should be sent to the current channel.
      *
      * @return True if announcements should be sent to the current channel, false otherwise
      */
-    fun isCurrentChannel(): Boolean {
-        return this == CURRENT
-    }
+    fun isCurrentChannel(): Boolean = this == CURRENT
 
     /**
      * Checks if level-up announcements should be sent as direct messages.
      *
      * @return True if announcements should be sent as direct messages, false otherwise
      */
-    fun isDM(): Boolean {
-        return this == DM
-    }
+    fun isDM(): Boolean = this == DM
 
     /**
      * Checks if level-up announcements should be sent to a custom channel.
      *
      * @return True if announcements should be sent to a custom channel, false otherwise
      */
-    fun isCustomChannel(): Boolean {
-        return this == CUSTOM
-    }
+    fun isCustomChannel(): Boolean = this == CUSTOM
 }

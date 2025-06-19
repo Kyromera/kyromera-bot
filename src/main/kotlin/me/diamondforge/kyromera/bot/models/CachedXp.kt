@@ -7,5 +7,5 @@ data class CachedXp(
     val guildId: Long,
     val userId: Long,
     val xp: Int,
-    val lastUpdated: Long = System.currentTimeMillis()
+    val lastUpdated: Long = System.currentTimeMillis(),
 )

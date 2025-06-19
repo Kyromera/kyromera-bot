@@ -6,7 +6,9 @@ package me.diamondforge.kyromera.bot.enums
  * This enum corresponds to the `filter_mode` column in the database,
  * which determines how channels and roles are filtered for XP gain.
  */
-enum class FilterMode(val value: String) {
+enum class FilterMode(
+    val value: String,
+) {
     /**
      * Denylist mode - XP is awarded in all channels/roles EXCEPT those in the filter list.
      * This is the default mode.
@@ -16,7 +18,8 @@ enum class FilterMode(val value: String) {
     /**
      * Allowlist mode - XP is ONLY awarded in channels/roles that are in the filter list.
      */
-    ALLOWLIST("allowlist");
+    ALLOWLIST("allowlist"),
+    ;
 
     companion object {
         /**
@@ -25,9 +28,7 @@ enum class FilterMode(val value: String) {
          * @param value The string value to convert
          * @return The corresponding enum value, or DENYLIST if the value is not recognized
          */
-        fun fromString(value: String): FilterMode {
-            return values().find { it.value == value.lowercase() } ?: DENYLIST
-        }
+        fun fromString(value: String): FilterMode = values().find { it.value == value.lowercase() } ?: DENYLIST
     }
 
     /**
@@ -35,16 +36,12 @@ enum class FilterMode(val value: String) {
      *
      * @return True if the mode is denylist, false otherwise
      */
-    fun isDenylist(): Boolean {
-        return this == DENYLIST
-    }
+    fun isDenylist(): Boolean = this == DENYLIST
 
     /**
      * Checks if the mode is allowlist.
      *
      * @return True if the mode is allowlist, false otherwise
      */
-    fun isAllowlist(): Boolean {
-        return this == ALLOWLIST
-    }
+    fun isAllowlist(): Boolean = this == ALLOWLIST
 }

@@ -19,11 +19,10 @@ private const val mainPackageName = "me.diamondforge.kyromera.bot"
 object Main {
     @JvmStatic
     fun main(args: Array<out String>) {
-
         try {
             System.setProperty(
                 LogbackConstants.CONFIG_FILE_PROPERTY,
-                Environment.logbackConfigPath.absolutePathString()
+                Environment.logbackConfigPath.absolutePathString(),
             )
             logger.info { "Loading logback configuration at ${Environment.logbackConfigPath.absolutePathString()}" }
             if ("-XX:+AllowEnhancedClassRedefinition" in ManagementFactory.getRuntimeMXBean().inputArguments) {
@@ -68,9 +67,7 @@ object Main {
                 components {
                     enable = true
                 }
-
             }
-
         } catch (e: Exception) {
             logger.error(e) { "Unable to start the bot" }
             exitProcess(1)

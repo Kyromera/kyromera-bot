@@ -15,12 +15,14 @@ object LevelingSettings : Table("leveling_settings") {
     val levelupMessageReward = text("levelup_message_reward").nullable()
     val retainRoles = bool("retain_roles").default(false)
     val lastRecalc = long("last_recalc").default(0)
-    val filterMode = varchar("filter_mode", 16).default(FilterMode.DENYLIST.value).check {
-        it inList FilterMode.entries.map { mode -> mode.value }
-    }
-    val levelupAnnounceMode = varchar("levelup_announce_mode", 16).default(LevelUpAnnounceMode.CURRENT.value).check {
-        it inList LevelUpAnnounceMode.entries.map { mode -> mode.value }
-    }
+    val filterMode =
+        varchar("filter_mode", 16).default(FilterMode.DENYLIST.value).check {
+            it inList FilterMode.entries.map { mode -> mode.value }
+        }
+    val levelupAnnounceMode =
+        varchar("levelup_announce_mode", 16).default(LevelUpAnnounceMode.CURRENT.value).check {
+            it inList LevelUpAnnounceMode.entries.map { mode -> mode.value }
+        }
     val stackRoleMultipliers = bool("stack_role_multipliers").default(false)
 
     override val primaryKey = PrimaryKey(guildId)

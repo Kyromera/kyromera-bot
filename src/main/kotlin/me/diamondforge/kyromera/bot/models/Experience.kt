@@ -5,5 +5,5 @@ data class Experience(
     val guildId: Long,
     val level: Int,
     val xp: Int,
-    val rank: Long
+    val rank: Long,
 )
