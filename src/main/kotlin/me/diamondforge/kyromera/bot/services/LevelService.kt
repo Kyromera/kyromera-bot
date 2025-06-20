@@ -57,12 +57,12 @@ private val logger = KotlinLogging.logger {}
 @BService
 class LevelService(
     private val redisClient: RedisClientProvider,
+    private val rabbitMqClient: RabbitMqClientProvider,
     private val databaseClient: DatabaseSource,
     private val context: BContext,
 ) {
     companion object {
         const val CHANNEL_DROP_GUILD_CACHE = "kyromera:levelservice:dropguildcache"
-        const val CHANNEL_GET_GUILD_INFO = "kyromera:levelservice:getguildinfo"
     }
 
     private val json =
@@ -238,24 +238,39 @@ class LevelService(
             startVoiceChannelMonitoringWorker()
         }
 
-        initializeRedisSubscriptions()
+        initializeMessageQueueSubscriptions()
     }
 
     /**
-     * Initializes Redis Pub/Sub subscriptions for external commands.
+     * Initializes message queue subscriptions for external commands.
      *
-     * This method sets up listeners for various Redis channels that allow external
+     * This method sets up listeners for various channels that allow external
      * systems to trigger actions in the LevelService, such as dropping guild caches
      * or retrieving guild information.
      */
-    private fun initializeRedisSubscriptions() {
-        logger.info { "Initializing Redis Pub/Sub subscriptions for LevelService" }
+    private fun initializeMessageQueueSubscriptions() {
+        logger.info { "Initializing message queue subscriptions for LevelService" }
 
-        redisClient.subscribe(CHANNEL_DROP_GUILD_CACHE) { message ->
+        initializeRabbitMqSubscriptions()
+
+        logger.info { "Message queue subscriptions initialized successfully" }
+    }
+
+    /**
+     * Initializes RabbitMQ subscriptions for external commands.
+     *
+     * This method sets up listeners for various RabbitMQ queues that allow external
+     * systems to trigger actions in the LevelService, such as dropping guild caches
+     * or retrieving guild information.
+     */
+    private fun initializeRabbitMqSubscriptions() {
+        logger.info { "Initializing RabbitMQ subscriptions for LevelService" }
+
+        rabbitMqClient.subscribe(CHANNEL_DROP_GUILD_CACHE) { message ->
             try {
                 val guildId = message.toLongOrNull()
                 if (guildId != null) {
-                    logger.info { "Received request to drop cache for guild $guildId via Redis Pub/Sub" }
+                    logger.info { "Received request to drop cache for guild $guildId via RabbitMQ" }
                     KyromeraScope.launch {
                         dropGuildCaches(guildId)
                     }
@@ -267,25 +282,7 @@ class LevelService(
             }
         }
 
-        redisClient.subscribe(CHANNEL_GET_GUILD_INFO) { message ->
-            try {
-                val guildId = message.toLongOrNull()
-                if (guildId != null) {
-                    logger.info { "Received request to get info for guild $guildId via Redis Pub/Sub" }
-                    KyromeraScope.launch {
-                        val responseChannel = "$CHANNEL_GET_GUILD_INFO:response:$guildId"
-                        val guildInfo = getGuildInfo(guildId)
-                        redisClient.publish(responseChannel, guildInfo)
-                    }
-                } else {
-                    logger.warn { "Received invalid guild ID in get guild info message: $message" }
-                }
-            } catch (e: Exception) {
-                logger.error(e) { "Error processing get guild info message: $message" }
-            }
-        }
-
-        logger.info { "Redis Pub/Sub subscriptions initialized successfully" }
+        logger.info { "RabbitMQ subscriptions initialized successfully" }
     }
 
     /**
@@ -2338,113 +2335,7 @@ class LevelService(
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
     }
-
-    /**
-     * Retrieves information about a guild from JDA.
-     *
-     * This method collects various pieces of information about a guild, including:
-     * - Basic guild information (name, member count, etc.)
-     * - Guild roles
-     * - Guild channels
-     * - Guild settings from the leveling system
-     *
-     * The information is returned as a JSON string that can be consumed by external systems.
-     *
-     * @param guildId The ID of the guild to get information for
-     * @return A JSON string containing information about the guild
-     */
-    suspend fun getGuildInfo(guildId: Long): String {
-        logger.info { "Retrieving guild info for guild $guildId" }
-
-        try {
-            val guild = context.jda.getGuildById(guildId)
-            if (guild == null) {
-                logger.warn { "Guild $guildId not found in JDA" }
-                return """{"error": "Guild not found", "guildId": $guildId}"""
-            }
-
-            val jsonString =
-                kotlinx.serialization.json.Json.encodeToString(
-                    kotlinx.serialization.json.JsonObject
-                        .serializer(),
-                    kotlinx.serialization.json.buildJsonObject {
-                        put("id", kotlinx.serialization.json.JsonPrimitive(guild.id))
-                        put("name", kotlinx.serialization.json.JsonPrimitive(guild.name))
-                        put("memberCount", kotlinx.serialization.json.JsonPrimitive(guild.memberCount))
-                        put("ownerId", kotlinx.serialization.json.JsonPrimitive(guild.ownerId))
-
-                        put(
-                            "roles",
-                            kotlinx.serialization.json.buildJsonArray {
-                                guild.roles.forEach { role ->
-                                    add(
-                                        kotlinx.serialization.json.buildJsonObject {
-                                            put("id", kotlinx.serialization.json.JsonPrimitive(role.id))
-                                            put("name", kotlinx.serialization.json.JsonPrimitive(role.name))
-                                            put("color", kotlinx.serialization.json.JsonPrimitive(role.colorRaw))
-                                            put("position", kotlinx.serialization.json.JsonPrimitive(role.position))
-                                            put("isHoisted", kotlinx.serialization.json.JsonPrimitive(role.isHoisted))
-                                            put("isMentionable", kotlinx.serialization.json.JsonPrimitive(role.isMentionable))
-                                        },
-                                    )
-                                }
-                            },
-                        )
-
-                        put(
-                            "channels",
-                            kotlinx.serialization.json.buildJsonArray {
-                                guild.channels.forEach { channel ->
-                                    add(
-                                        kotlinx.serialization.json.buildJsonObject {
-                                            put("id", kotlinx.serialization.json.JsonPrimitive(channel.id))
-                                            put("name", kotlinx.serialization.json.JsonPrimitive(channel.name))
-                                            put("type", kotlinx.serialization.json.JsonPrimitive(channel.type.name))
-                                        },
-                                    )
-                                }
-                            },
-                        )
-
-                        put(
-                            "levelingSettings",
-                            kotlinx.serialization.json.buildJsonObject {
-                                val xpMultiplier = getXpMultiplier(guildId)
-                                put("textEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textEnabled))
-                                put("textMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.textMultiplier))
-                                put("vcEnabled", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcEnabled))
-                                put("vcMultiplier", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.vcMultiplier))
-                                put("stackRoleMultipliers", kotlinx.serialization.json.JsonPrimitive(xpMultiplier.stackRoleMultipliers))
-
-                                val filterMode = getFilterMode(guildId)
-                                put("filterMode", kotlinx.serialization.json.JsonPrimitive(filterMode.value))
-
-                                val rewardRoles = getRewardRoles(guildId)
-                                put(
-                                    "rewardRoles",
-                                    kotlinx.serialization.json.buildJsonArray {
-                                        rewardRoles.forEach { reward ->
-                                            add(
-                                                kotlinx.serialization.json.buildJsonObject {
-                                                    put("roleId", kotlinx.serialization.json.JsonPrimitive(reward.roleId.toString()))
-                                                    put("level", kotlinx.serialization.json.JsonPrimitive(reward.level))
-                                                },
-                                            )
-                                        }
-                                    },
-                                )
-                            },
-                        )
-                    },
-                )
-            logger.debug { "Retrieved guild info for guild $guildId: ${jsonString.take(100)}..." }
-
-            return jsonString
-        } catch (e: Exception) {
-            logger.error(e) { "Error retrieving guild info for guild $guildId" }
-            return """{"error": "${e.message}", "guildId": $guildId}"""
-        }
-    }
+    
 
     suspend fun importMee6Data(guildId: Long): Result {
         val client = Mee6XpClient()
