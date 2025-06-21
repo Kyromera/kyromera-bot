@@ -26,19 +26,20 @@ private val logger = KotlinLogging.logger {}
 class RabbitMqClientProvider(
     config: Config,
 ) {
-    private val connectionFactory = ConnectionFactory().apply {
-        host = config.rabbitMqConfig.host
-        port = config.rabbitMqConfig.port
-        username = config.rabbitMqConfig.user
-        password = config.rabbitMqConfig.password
-        isAutomaticRecoveryEnabled = true
-    }
+    private val connectionFactory =
+        ConnectionFactory().apply {
+            host = config.rabbitMqConfig.host
+            port = config.rabbitMqConfig.port
+            username = config.rabbitMqConfig.user
+            password = config.rabbitMqConfig.password
+            isAutomaticRecoveryEnabled = true
+        }
 
     private val connection: Connection = connectionFactory.newConnection()
     private val channel: Channel = connection.createChannel()
     private val json = Json { ignoreUnknownKeys = true }
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
-    private val subscriptions = ConcurrentHashMap<String, String>() 
+    private val subscriptions = ConcurrentHashMap<String, String>()
     private val executor = Executors.newCachedThreadPool()
 
     init {
@@ -77,38 +78,44 @@ class RabbitMqClientProvider(
     suspend fun get(key: String): String? =
         runCatching {
             val replyQueueName = channel.queueDeclare().queue
-            val correlationId = java.util.UUID.randomUUID().toString()
+            val correlationId =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
 
             val future = CompletableFuture<String?>()
 
-            val ctag = channel.basicConsume(
-                replyQueueName,
-                true,
-                object : DefaultConsumer(channel) {
-                    override fun handleDelivery(
-                        consumerTag: String,
-                        envelope: Envelope,
-                        properties: AMQP.BasicProperties,
-                        body: ByteArray
-                    ) {
-                        if (properties.correlationId == correlationId) {
-                            future.complete(String(body, StandardCharsets.UTF_8))
-                            channel.basicCancel(consumerTag)
+            val ctag =
+                channel.basicConsume(
+                    replyQueueName,
+                    true,
+                    object : DefaultConsumer(channel) {
+                        override fun handleDelivery(
+                            consumerTag: String,
+                            envelope: Envelope,
+                            properties: AMQP.BasicProperties,
+                            body: ByteArray,
+                        ) {
+                            if (properties.correlationId == correlationId) {
+                                future.complete(String(body, StandardCharsets.UTF_8))
+                                channel.basicCancel(consumerTag)
+                            }
                         }
-                    }
-                }
-            )
+                    },
+                )
 
-            val props = AMQP.BasicProperties.Builder()
-                .correlationId(correlationId)
-                .replyTo(replyQueueName)
-                .build()
+            val props =
+                AMQP.BasicProperties
+                    .Builder()
+                    .correlationId(correlationId)
+                    .replyTo(replyQueueName)
+                    .build()
 
             channel.basicPublish(
                 "kyromera.kv",
                 "get.$key",
                 props,
-                key.toByteArray(StandardCharsets.UTF_8)
+                key.toByteArray(StandardCharsets.UTF_8),
             )
 
             val result = future.await()
@@ -135,7 +142,7 @@ class RabbitMqClientProvider(
                 "kyromera.kv",
                 "set.$key",
                 null,
-                value.toByteArray(StandardCharsets.UTF_8)
+                value.toByteArray(StandardCharsets.UTF_8),
             )
             true
         }.onFailure { logger.error(it) { "Failed to set key '$key'" } }
@@ -158,37 +165,35 @@ class RabbitMqClientProvider(
                 return true
             }
 
-            // Declare a durable exchange
             channel.exchangeDeclare("kyromera.pubsub", "fanout", true)
 
-            // Declare a queue that will survive broker restarts
             channel.queueDeclare(queueName, true, false, false, null)
 
-            // Bind the queue to the exchange
             channel.queueBind(queueName, "kyromera.pubsub", queueName)
 
-            val consumerTag = channel.basicConsume(
-                queueName,
-                true, // auto-ack
-                object : DefaultConsumer(channel) {
-                    override fun handleDelivery(
-                        consumerTag: String,
-                        envelope: Envelope,
-                        properties: AMQP.BasicProperties,
-                        body: ByteArray
-                    ) {
-                        val message = String(body, StandardCharsets.UTF_8)
-                        logger.trace { "Received message on queue '$queueName': $message" }
-                        coroutineScope.launch {
-                            try {
-                                callback(message)
-                            } catch (e: Exception) {
-                                logger.error(e) { "Error in callback for message on queue '$queueName'" }
+            val consumerTag =
+                channel.basicConsume(
+                    queueName,
+                    true,
+                    object : DefaultConsumer(channel) {
+                        override fun handleDelivery(
+                            consumerTag: String,
+                            envelope: Envelope,
+                            properties: AMQP.BasicProperties,
+                            body: ByteArray,
+                        ) {
+                            val message = String(body, StandardCharsets.UTF_8)
+                            logger.trace { "Received message on queue '$queueName': $message" }
+                            coroutineScope.launch {
+                                try {
+                                    callback(message)
+                                } catch (e: Exception) {
+                                    logger.error(e) { "Error in callback for message on queue '$queueName'" }
+                                }
                             }
                         }
-                    }
-                }
-            )
+                    },
+                )
 
             subscriptions[queueName] = consumerTag
             logger.info { "Subscribed to queue: $queueName" }
@@ -216,59 +221,58 @@ class RabbitMqClientProvider(
                 return true
             }
 
-            // Declare a durable exchange for requests
             channel.exchangeDeclare("kyromera.rpc", "direct", true)
 
-            // Declare a queue that will survive broker restarts
             channel.queueDeclare(queueName, true, false, false, null)
 
-            // Bind the queue to the exchange
             channel.queueBind(queueName, "kyromera.rpc", queueName)
 
-            val consumerTag = channel.basicConsume(
-                queueName,
-                false, // manual ack
-                object : DefaultConsumer(channel) {
-                    override fun handleDelivery(
-                        consumerTag: String,
-                        envelope: Envelope,
-                        properties: AMQP.BasicProperties,
-                        body: ByteArray
-                    ) {
-                        val message = String(body, StandardCharsets.UTF_8)
-                        logger.trace { "Received request on queue '$queueName': $message" }
+            val consumerTag =
+                channel.basicConsume(
+                    queueName,
+                    false,
+                    object : DefaultConsumer(channel) {
+                        override fun handleDelivery(
+                            consumerTag: String,
+                            envelope: Envelope,
+                            properties: AMQP.BasicProperties,
+                            body: ByteArray,
+                        ) {
+                            val message = String(body, StandardCharsets.UTF_8)
+                            logger.trace { "Received request on queue '$queueName': $message" }
 
-                        // Create a response function that sends a reply to the replyTo queue
-                        val respond: (String) -> Unit = { response ->
-                            properties.replyTo?.let { replyTo ->
-                                val replyProps = AMQP.BasicProperties.Builder()
-                                    .correlationId(properties.correlationId)
-                                    .build()
+                            val respond: (String) -> Unit = { response ->
+                                properties.replyTo?.let { replyTo ->
+                                    val replyProps =
+                                        AMQP.BasicProperties
+                                            .Builder()
+                                            .correlationId(properties.correlationId)
+                                            .build()
 
-                                channel.basicPublish(
-                                    "", // default exchange
-                                    replyTo,
-                                    replyProps,
-                                    response.toByteArray(StandardCharsets.UTF_8)
-                                )
-                                logger.trace { "Sent response to $replyTo: $response" }
+                                    channel.basicPublish(
+                                        "",
+                                        replyTo,
+                                        replyProps,
+                                        response.toByteArray(StandardCharsets.UTF_8),
+                                    )
+                                    logger.trace { "Sent response to $replyTo: $response" }
+                                }
+                            }
+
+                            coroutineScope.launch {
+                                try {
+                                    callback(message, respond)
+
+                                    channel.basicAck(envelope.deliveryTag, false)
+                                } catch (e: Exception) {
+                                    logger.error(e) { "Error in callback for request on queue '$queueName'" }
+
+                                    channel.basicNack(envelope.deliveryTag, false, true)
+                                }
                             }
                         }
-
-                        coroutineScope.launch {
-                            try {
-                                callback(message, respond)
-                                // Acknowledge the message after processing
-                                channel.basicAck(envelope.deliveryTag, false)
-                            } catch (e: Exception) {
-                                logger.error(e) { "Error in callback for request on queue '$queueName'" }
-                                // Reject the message and requeue it
-                                channel.basicNack(envelope.deliveryTag, false, true)
-                            }
-                        }
-                    }
-                }
-            )
+                    },
+                )
 
             subscriptions[queueName] = consumerTag
             logger.info { "Subscribed to queue for requests: $queueName" }
@@ -300,61 +304,60 @@ class RabbitMqClientProvider(
                 return true
             }
 
-            // Declare a durable exchange for requests
             channel.exchangeDeclare("kyromera.rpc", "direct", true)
 
-            // Declare a queue that will survive broker restarts
             channel.queueDeclare(queueName, true, false, false, null)
 
-            // Bind the queue to the exchange
             channel.queueBind(queueName, "kyromera.rpc", queueName)
 
-            val consumerTag = channel.basicConsume(
-                queueName,
-                false, // manual ack
-                object : DefaultConsumer(channel) {
-                    override fun handleDelivery(
-                        consumerTag: String,
-                        envelope: Envelope,
-                        properties: AMQP.BasicProperties,
-                        body: ByteArray
-                    ) {
-                        val message = String(body, StandardCharsets.UTF_8)
-                        logger.trace { "Received typed request on queue '$queueName': $message" }
+            val consumerTag =
+                channel.basicConsume(
+                    queueName,
+                    false,
+                    object : DefaultConsumer(channel) {
+                        override fun handleDelivery(
+                            consumerTag: String,
+                            envelope: Envelope,
+                            properties: AMQP.BasicProperties,
+                            body: ByteArray,
+                        ) {
+                            val message = String(body, StandardCharsets.UTF_8)
+                            logger.trace { "Received typed request on queue '$queueName': $message" }
 
-                        // Create a response function that sends a reply to the replyTo queue
-                        val respond: (RESP) -> Unit = { response ->
-                            properties.replyTo?.let { replyTo ->
-                                val replyProps = AMQP.BasicProperties.Builder()
-                                    .correlationId(properties.correlationId)
-                                    .build()
+                            val respond: (RESP) -> Unit = { response ->
+                                properties.replyTo?.let { replyTo ->
+                                    val replyProps =
+                                        AMQP.BasicProperties
+                                            .Builder()
+                                            .correlationId(properties.correlationId)
+                                            .build()
 
-                                val responseJson = json.encodeToString(responseSerializer, response)
-                                channel.basicPublish(
-                                    "", // default exchange
-                                    replyTo,
-                                    replyProps,
-                                    responseJson.toByteArray(StandardCharsets.UTF_8)
-                                )
-                                logger.trace { "Sent typed response to $replyTo" }
+                                    val responseJson = json.encodeToString(responseSerializer, response)
+                                    channel.basicPublish(
+                                        "",
+                                        replyTo,
+                                        replyProps,
+                                        responseJson.toByteArray(StandardCharsets.UTF_8),
+                                    )
+                                    logger.trace { "Sent typed response to $replyTo" }
+                                }
+                            }
+
+                            coroutineScope.launch {
+                                try {
+                                    val request = json.decodeFromString(requestSerializer, message)
+                                    callback(request, respond)
+
+                                    channel.basicAck(envelope.deliveryTag, false)
+                                } catch (e: Exception) {
+                                    logger.error(e) { "Error in callback for typed request on queue '$queueName'" }
+
+                                    channel.basicNack(envelope.deliveryTag, false, true)
+                                }
                             }
                         }
-
-                        coroutineScope.launch {
-                            try {
-                                val request = json.decodeFromString(requestSerializer, message)
-                                callback(request, respond)
-                                // Acknowledge the message after processing
-                                channel.basicAck(envelope.deliveryTag, false)
-                            } catch (e: Exception) {
-                                logger.error(e) { "Error in callback for typed request on queue '$queueName'" }
-                                // Reject the message and requeue it
-                                channel.basicNack(envelope.deliveryTag, false, true)
-                            }
-                        }
-                    }
-                }
-            )
+                    },
+                )
 
             subscriptions[queueName] = consumerTag
             logger.info { "Subscribed to queue for typed requests: $queueName" }
@@ -372,10 +375,11 @@ class RabbitMqClientProvider(
      */
     fun unsubscribe(queueName: String): Boolean {
         return runCatching {
-            val consumerTag = subscriptions[queueName] ?: run {
-                logger.warn { "Not subscribed to queue: $queueName" }
-                return true
-            }
+            val consumerTag =
+                subscriptions[queueName] ?: run {
+                    logger.warn { "Not subscribed to queue: $queueName" }
+                    return true
+                }
 
             channel.basicCancel(consumerTag)
             subscriptions.remove(queueName)
@@ -404,7 +408,7 @@ class RabbitMqClientProvider(
                 "kyromera.pubsub",
                 routingKey,
                 null,
-                message.toByteArray(StandardCharsets.UTF_8)
+                message.toByteArray(StandardCharsets.UTF_8),
             )
             true
         }.onFailure {
@@ -428,42 +432,48 @@ class RabbitMqClientProvider(
         exchange: String,
         routingKey: String,
         message: String,
-        timeout: Long = 30000
+        timeout: Long = 30000,
     ): String? =
         runCatching {
             val replyQueueName = channel.queueDeclare().queue
-            val correlationId = java.util.UUID.randomUUID().toString()
+            val correlationId =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
 
             val future = CompletableFuture<String?>()
 
-            val ctag = channel.basicConsume(
-                replyQueueName,
-                true,
-                object : DefaultConsumer(channel) {
-                    override fun handleDelivery(
-                        consumerTag: String,
-                        envelope: Envelope,
-                        properties: AMQP.BasicProperties,
-                        body: ByteArray
-                    ) {
-                        if (properties.correlationId == correlationId) {
-                            future.complete(String(body, StandardCharsets.UTF_8))
-                            channel.basicCancel(consumerTag)
+            val ctag =
+                channel.basicConsume(
+                    replyQueueName,
+                    true,
+                    object : DefaultConsumer(channel) {
+                        override fun handleDelivery(
+                            consumerTag: String,
+                            envelope: Envelope,
+                            properties: AMQP.BasicProperties,
+                            body: ByteArray,
+                        ) {
+                            if (properties.correlationId == correlationId) {
+                                future.complete(String(body, StandardCharsets.UTF_8))
+                                channel.basicCancel(consumerTag)
+                            }
                         }
-                    }
-                }
-            )
+                    },
+                )
 
-            val props = AMQP.BasicProperties.Builder()
-                .correlationId(correlationId)
-                .replyTo(replyQueueName)
-                .build()
+            val props =
+                AMQP.BasicProperties
+                    .Builder()
+                    .correlationId(correlationId)
+                    .replyTo(replyQueueName)
+                    .build()
 
             channel.basicPublish(
                 exchange,
                 routingKey,
                 props,
-                message.toByteArray(StandardCharsets.UTF_8)
+                message.toByteArray(StandardCharsets.UTF_8),
             )
 
             val result = future.await()
@@ -474,9 +484,9 @@ class RabbitMqClientProvider(
 
     /**
      * Convenience method to send a request to a queue and wait for a response.
-     * 
+     *
      * This method uses the "kyromera.rpc" exchange and the provided queue name as the routing key.
-     * 
+     *
      * @param queueName The queue to send the request to
      * @param message The message to send
      * @param timeout The timeout in milliseconds (default: 30000)
@@ -485,7 +495,7 @@ class RabbitMqClientProvider(
     suspend fun request(
         queueName: String,
         message: String,
-        timeout: Long = 30000
+        timeout: Long = 30000,
     ): String? = requestResponse("kyromera.rpc", queueName, message, timeout)
 
     /**
@@ -507,7 +517,7 @@ class RabbitMqClientProvider(
         request: REQ,
         requestSerializer: KSerializer<REQ>,
         responseSerializer: KSerializer<RESP>,
-        timeout: Long = 30000
+        timeout: Long = 30000,
     ): RESP? =
         runCatching {
             val requestJson = json.encodeToString(requestSerializer, request)
@@ -518,9 +528,9 @@ class RabbitMqClientProvider(
 
     /**
      * Convenience method to send a typed request to a queue and wait for a typed response.
-     * 
+     *
      * This method uses the "kyromera.rpc" exchange and the provided queue name as the routing key.
-     * 
+     *
      * @param queueName The queue to send the request to
      * @param request The request object to send
      * @param requestSerializer The serializer to use for the request
@@ -533,15 +543,16 @@ class RabbitMqClientProvider(
         request: REQ,
         requestSerializer: KSerializer<REQ>,
         responseSerializer: KSerializer<RESP>,
-        timeout: Long = 30000
-    ): RESP? = requestResponseTyped(
-        "kyromera.rpc", 
-        queueName, 
-        request, 
-        requestSerializer, 
-        responseSerializer, 
-        timeout
-    )
+        timeout: Long = 30000,
+    ): RESP? =
+        requestResponseTyped(
+            "kyromera.rpc",
+            queueName,
+            request,
+            requestSerializer,
+            responseSerializer,
+            timeout,
+        )
 
     /**
      * Gets a typed value from RabbitMQ.
@@ -593,7 +604,7 @@ class RabbitMqClientProvider(
                 "kyromera.kv",
                 "delete.$key",
                 null,
-                key.toByteArray(StandardCharsets.UTF_8)
+                key.toByteArray(StandardCharsets.UTF_8),
             )
             true
         }.onFailure { logger.error(it) { "Failed to delete key '$key'" } }

@@ -102,7 +102,7 @@ dependencies {
     implementation("org.apache.commons:commons-pool2:2.12.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
-    
+
     implementation("com.rabbitmq:amqp-client:5.25.0")
 
     implementation("com.github.Kyromera:levelcard-lib:bd1b074274")

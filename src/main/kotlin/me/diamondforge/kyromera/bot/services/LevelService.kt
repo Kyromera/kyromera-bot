@@ -2335,7 +2335,6 @@ class LevelService(
         dropAllFilteredRoleCaches(guildId)
         logger.info { "Removed role $roleId from filter list for guild $guildId" }
     }
-    
 
     suspend fun importMee6Data(guildId: Long): Result {
         val client = Mee6XpClient()
