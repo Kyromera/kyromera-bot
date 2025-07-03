@@ -70,7 +70,7 @@ repositories {
 }
 
 val exposedVersion = "0.61.0"
-val ktorVersion = "3.2.0"
+val ktorVersion = "3.2.1"
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
@@ -83,7 +83,7 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.7")
     implementation("net.dv8tion:JDA:5.6.1")
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
-    implementation("org.flywaydb:flyway-core:11.10.0")
+    implementation("org.flywaydb:flyway-core:11.10.1")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
@@ -112,7 +112,7 @@ dependencies {
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-aarch_64")
 
     runtimeOnly("org.postgresql:postgresql")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.10.0")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.10.1")
     testImplementation(kotlin("test"))
 }
 
