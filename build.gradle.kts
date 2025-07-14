@@ -70,7 +70,7 @@ repositories {
 }
 
 val exposedVersion = "0.61.0"
-val ktorVersion = "3.2.1"
+val ktorVersion = "3.2.2"
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
