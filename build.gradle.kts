@@ -108,8 +108,8 @@ dependencies {
     implementation("com.github.Kyromera:levelcard-lib:bd1b074274")
     implementation("com.github.Kyromera:mee6extract:1.0.1")
 
-    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-x86_64")
-    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.2.Final:osx-aarch_64")
+    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.3.Final:osx-x86_64")
+    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.3.Final:osx-aarch_64")
 
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:11.10.2")
