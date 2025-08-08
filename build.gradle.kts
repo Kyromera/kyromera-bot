@@ -70,26 +70,26 @@ repositories {
 }
 
 val exposedVersion = "0.61.0"
-val ktorVersion = "3.2.2"
+val ktorVersion = "3.2.3"
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlin:kotlin-serialization")
-    implementation("com.zaxxer:HikariCP:7.0.0")
+    implementation("com.zaxxer:HikariCP:7.0.1")
     implementation("ch.qos.logback:logback-classic:1.5.18")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.postgresql:postgresql:42.7.7")
     implementation("net.dv8tion:JDA:5.6.1")
-    implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
+    implementation("io.github.freya022:BotCommands:3.0.0-beta.3")
     implementation("org.flywaydb:flyway-core:11.11.0")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("com.google.code.gson:gson:2.13.1")
-    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.4")
+    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.5.6")
 
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-crypt:$exposedVersion")
