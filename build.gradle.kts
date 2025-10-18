@@ -81,7 +81,7 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.postgresql:postgresql:42.7.7")
-    implementation("net.dv8tion:JDA:6.0.0")
+    implementation("net.dv8tion:JDA:6.1.0")
     implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
     implementation("org.flywaydb:flyway-core:11.14.0")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
