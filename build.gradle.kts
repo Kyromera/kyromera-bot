@@ -98,7 +98,7 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-kotlin-datetime:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
 
-    implementation("io.lettuce:lettuce-core:7.0.0.RELEASE")
+    implementation("io.lettuce:lettuce-core:7.1.0.RELEASE")
     implementation("org.apache.commons:commons-pool2:2.12.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
