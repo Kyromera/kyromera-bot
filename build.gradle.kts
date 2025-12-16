@@ -4,9 +4,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 plugins {
-    kotlin("jvm") version "2.2.0"
+    kotlin("jvm") version "2.3.0"
     java
-    kotlin("plugin.serialization") version "2.2.0"
+    kotlin("plugin.serialization") version "2.3.0"
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
