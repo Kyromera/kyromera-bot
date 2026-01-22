@@ -76,20 +76,20 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlin:kotlin-serialization")
-    implementation("com.zaxxer:HikariCP:7.0.0")
-    implementation("ch.qos.logback:logback-classic:1.5.18")
+    implementation("com.zaxxer:HikariCP:7.0.2")
+    implementation("ch.qos.logback:logback-classic:1.5.25")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("org.postgresql:postgresql:42.7.7")
+    implementation("org.postgresql:postgresql:42.7.9")
     implementation("net.dv8tion:JDA:6.3.0")
-    implementation("io.github.freya022:BotCommands:3.0.0-beta.2")
-    implementation("org.flywaydb:flyway-core:11.20.0")
+    implementation("io.github.freya022:BotCommands:3.0.0-beta.7")
+    implementation("org.flywaydb:flyway-core:11.20.2")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
-    implementation("com.google.code.gson:gson:2.13.1")
-    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.6.0")
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.6.1")
 
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-crypt:$exposedVersion")
@@ -98,8 +98,8 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-kotlin-datetime:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
 
-    implementation("io.lettuce:lettuce-core:7.2.0.RELEASE")
-    implementation("org.apache.commons:commons-pool2:2.13.0")
+    implementation("io.lettuce:lettuce-core:7.2.1.RELEASE")
+    implementation("org.apache.commons:commons-pool2:2.13.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.10.2")
 
@@ -108,11 +108,11 @@ dependencies {
     implementation("com.github.Kyromera:levelcard-lib:bd1b074274")
     implementation("com.github.Kyromera:mee6extract:1.0.1")
 
-    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.3.Final:osx-x86_64")
-    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.3.Final:osx-aarch_64")
+    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.9.Final:osx-x86_64")
+    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.9.Final:osx-aarch_64")
 
     runtimeOnly("org.postgresql:postgresql")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.20.0")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.20.2")
     testImplementation(kotlin("test"))
 }
 
